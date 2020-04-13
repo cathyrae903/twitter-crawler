@@ -88,201 +88,92 @@ int main( int argc, char* argv[] )
         printf("\ntwitterClient:: twitCurl::accountVerifyCredGet error:\n%s\n", replyMsg.c_str());
     }
 
-    /**************************************************************************
-    *                       Twitter Example Functionality
-    **************************************************************************/
+    std::queue<int> followers;      // Queue for followers that need to be crawled.
+    std::vector<int> crawledIds;    // IDs of users that have been crawled/searched?
 
-    /* Get followers' ids */
     std::string nextCursor("");
-    std::string searchUser("nextbigwhat");
+
+    /**************************************************************************
+    *                                 Searcher
+    **************************************************************************/
+    // Prepare a stopping condition of 4 levels deep.
+    // This means 
+    const int MAX_DEPTH = 1;
+    int depth = 0;
+    // Start the search with one user's screen-name.
+    followers.push(258604828);
     do
     {
-        if( twitterObj.followersIdsGet( nextCursor, searchUser ) )
+        // Only examine this user's followers if this user has not already been crawled.
+        if(!std::binary_search(crawledIds.begin(), crawledIds.end(), followers.front()))
         {
-            twitterObj.getLastWebResponse( replyMsg );
-            printf( "\ntwitterClient:: twitCurl::followersIdsGet for user [%s] web response:\n%s\n",
-                    searchUser.c_str(), replyMsg.c_str() );
+            // Increase the depth of the "searcher".
+            depth++; 
 
-            // JSON: "next_cursor":1422208797779779359,
-            nextCursor = "";
-            size_t nNextCursorStart = replyMsg.find("next_cursor");
-            if( std::string::npos == nNextCursorStart )
+            // Get this user's followers' IDs.
+            if(twitterObj.followersIdsGet(nextCursor, std::to_string(followers.front()), true))
             {
-                nNextCursorStart += strlen("next_cursor:\"");
-                size_t nNextCursorEnd = replyMsg.substr(nNextCursorStart).find(",");
-                if( std::string::npos != nNextCursorEnd )
+                twitterObj.getLastWebResponse(replyMsg);
+                printf( "\ntwitterClient:: twitCurl::followersIdsGet for user [%d] web response:\n%s\n",
+                        followers.front(), replyMsg.c_str() );
+
+                nextCursor = "";
+                size_t nNextCursorStart = replyMsg.find("next_cursor");
+                if( std::string::npos == nNextCursorStart )
                 {
-                    nextCursor = replyMsg.substr(nNextCursorStart, (nNextCursorEnd - nNextCursorStart));
-                    printf("\nNEXT CURSOR: %s\n\n\n\n\n", nextCursor.c_str());
+                    nNextCursorStart += strlen("next_cursor:\"");
+                    size_t nNextCursorEnd = replyMsg.substr(nNextCursorStart).find(",");
+                    if( std::string::npos != nNextCursorEnd )
+                    {
+                        nextCursor = replyMsg.substr(nNextCursorStart, (nNextCursorEnd - nNextCursorStart));
+                        printf("\nNEXT CURSOR: %s\n\n\n\n\n", nextCursor.c_str());
+                    }
                 }
             }
+            else {
+                twitterObj.getLastCurlError(replyMsg);
+                printf( "\ntwitterClient:: twitCurl::followersIdsGet error:\n%s\n", replyMsg.c_str() );
+                break;
+            }
+
+            // Extract follower IDs from web response. 
+            // Add extracted follower IDs to queue. Only add if not already in crawledIds? Consider efficiency between this and current method.
+
+            // Mark this user as crawled.
+            crawledIds.push_back(followers.front());
+            // Sort the vector in ascending order so that search is quicker.
+            std::sort(crawledIds.begin(), crawledIds.end());
         }
-        else {
-            twitterObj.getLastCurlError( replyMsg );
-            printf( "\ntwitterClient:: twitCurl::followersIdsGet error:\n%s\n", replyMsg.c_str() );
-            break;
+
+        // Remove this user from the queue.
+        followers.pop();
+    } while(!nextCursor.empty() && nextCursor.compare("0") && !followers.empty() && depth < MAX_DEPTH);
+
+    
+    /**************************************************************************
+    *                                Downloader
+    **************************************************************************/
+    // When code is broken up for multithreading, there will need to be a separate data structure
+    // because the searcher's crawledIds data structure is forever changing (additions and sorting).
+    std::vector<int>::iterator ptr;
+    for(ptr=crawledIds.begin(); ptr < crawledIds.end(); ptr++)
+    {
+        // Get user information.
+        nextCursor = "";
+        if( twitterObj.userGet(std::to_string(*ptr), true))
+        {
+            twitterObj.getLastWebResponse(replyMsg);
+            printf( "\ntwitterClient:: twitCurl::userGet web response:\n%s\n", replyMsg.c_str() );
+
+            // Extract profile_image_url_https from replyMsg and download it.
+            //system("wget -nd -nH -O ./images/<user_screen_name>.jpg <https_url>");
         }
-    } while( !nextCursor.empty() && nextCursor.compare("0") );
-
-    /* Get block list */
-    nextCursor = "";
-    if( twitterObj.blockListGet( nextCursor, false, false ) )
-    {
-        twitterObj.getLastWebResponse( replyMsg );
-        printf( "\ntwitterClient:: twitCurl::blockListGet web response:\n%s\n", replyMsg.c_str() );
+        else
+        {
+            twitterObj.getLastCurlError(replyMsg);
+            printf( "\ntwitterClient:: twitCurl::userGet error:\n%s\n", replyMsg.c_str() );
+        }
     }
-    else
-    {
-        twitterObj.getLastCurlError( replyMsg );
-        printf( "\ntwitterClient:: twitCurl::blockListGet error:\n%s\n", replyMsg.c_str() );
-    }
-
-    /* Get blocked ids */
-    nextCursor = "";
-    if( twitterObj.blockIdsGet( nextCursor, true ) )
-    {
-        twitterObj.getLastWebResponse( replyMsg );
-        printf( "\ntwitterClient:: twitCurl::blockIdsGet web response:\n%s\n", replyMsg.c_str() );
-    }
-    else
-    {
-        twitterObj.getLastCurlError( replyMsg );
-        printf( "\ntwitterClient:: twitCurl::blockIdsGet error:\n%s\n", replyMsg.c_str() );
-    }
-
-    /* Post a new status message */
-    memset( tmpBuf, 0, 1024 );
-    printf( "\nEnter a new status message: " );
-    fgets( tmpBuf, sizeof( tmpBuf ), stdin );
-    tmpStr = tmpBuf;
-    replyMsg = "";
-    if( twitterObj.statusUpdate( tmpStr ) )
-    {
-        twitterObj.getLastWebResponse( replyMsg );
-        printf( "\ntwitterClient:: twitCurl::statusUpdate web response:\n%s\n", replyMsg.c_str() );
-    }
-    else
-    {
-        twitterObj.getLastCurlError( replyMsg );
-        printf( "\ntwitterClient:: twitCurl::statusUpdate error:\n%s\n", replyMsg.c_str() );
-    }
-
-    /* Post a new reply */
-    memset( tmpBuf, 0, 1024 );
-    printf( "\nEnter message id to reply to : " );
-    fgets( tmpBuf, sizeof( tmpBuf ), stdin );
-    tmpStr2 = tmpBuf;
-    memset( tmpBuf, 0, 1024 );
-    printf( "\nEnter a reply message: " );
-    fgets( tmpBuf, sizeof( tmpBuf ), stdin );
-    tmpStr = tmpBuf;
-    replyMsg = "";
-    if( twitterObj.statusUpdate( tmpStr, tmpStr2 ) )
-    {
-        twitterObj.getLastWebResponse( replyMsg );
-        printf( "\ntwitterClient:: twitCurl::statusUpdate web response:\n%s\n", replyMsg.c_str() );
-    }
-    else
-    {
-        twitterObj.getLastCurlError( replyMsg );
-        printf( "\ntwitterClient:: twitCurl::statusUpdate error:\n%s\n", replyMsg.c_str() );
-    }
-
-
-    /* Search a string */
-    printf( "\nEnter string to search: " );
-    memset( tmpBuf, 0, 1024 );
-    fgets( tmpBuf, sizeof( tmpBuf ), stdin );
-    tmpStr = tmpBuf;
-    printf( "\nLimit search results to: " );
-    memset( tmpBuf, 0, 1024 );
-    fgets( tmpBuf, sizeof( tmpBuf ), stdin );
-    tmpStr2 = tmpBuf;
-    replyMsg = "";
-    if( twitterObj.search( tmpStr, tmpStr2 ) )
-    {
-        twitterObj.getLastWebResponse( replyMsg );
-        printf( "\ntwitterClient:: twitCurl::search web response:\n%s\n", replyMsg.c_str() );
-    }
-    else
-    {
-        twitterObj.getLastCurlError( replyMsg );
-        printf( "\ntwitterClient:: twitCurl::search error:\n%s\n", replyMsg.c_str() );
-    }
-
-#ifdef _TWITCURL_TEST_
-    /* Get user timeline */
-    replyMsg = "";
-    printf( "\nGetting user timeline\n" );
-    if( twitterObj.timelineUserGet( true, true, 0 ) )
-    {
-        twitterObj.getLastWebResponse( replyMsg );
-        printf( "\ntwitterClient:: twitCurl::timelineUserGet web response:\n%s\n", replyMsg.c_str() );
-    }
-    else
-    {
-        twitterObj.getLastCurlError( replyMsg );
-        printf( "\ntwitterClient:: twitCurl::timelineUserGet error:\n%s\n", replyMsg.c_str() );
-    }
-
-    /* Destroy a status message */
-    memset( tmpBuf, 0, 1024 );
-    printf( "\nEnter status message id to delete: " );
-    fgets( tmpBuf, sizeof( tmpBuf ), stdin );
-    tmpStr = tmpBuf;
-    replyMsg = "";
-    if( twitterObj.statusDestroyById( tmpStr ) )
-    {
-        twitterObj.getLastWebResponse( replyMsg );
-        printf( "\ntwitterClient:: twitCurl::statusDestroyById web response:\n%s\n", replyMsg.c_str() );
-    }
-    else
-    {
-        twitterObj.getLastCurlError( replyMsg );
-        printf( "\ntwitterClient:: twitCurl::statusDestroyById error:\n%s\n", replyMsg.c_str() );
-    }
-
-    /* Get public timeline */
-    replyMsg = "";
-    printf( "\nGetting public timeline\n" );
-    if( twitterObj.timelinePublicGet() )
-    {
-        twitterObj.getLastWebResponse( replyMsg );
-        printf( "\ntwitterClient:: twitCurl::timelinePublicGet web response:\n%s\n", replyMsg.c_str() );
-    }
-    else
-    {
-        twitterObj.getLastCurlError( replyMsg );
-        printf( "\ntwitterClient:: twitCurl::timelinePublicGet error:\n%s\n", replyMsg.c_str() );
-    }
-
-    /* Get friend ids */
-    replyMsg = "";
-    printf( "\nGetting friend ids\n" );
-    tmpStr = "techcrunch";
-    if( twitterObj.friendsIdsGet( tmpStr, false ) )
-    {
-        twitterObj.getLastWebResponse( replyMsg );
-        printf( "\ntwitterClient:: twitCurl::friendsIdsGet web response:\n%s\n", replyMsg.c_str() );
-    }
-    else
-    {
-        twitterObj.getLastCurlError( replyMsg );
-        printf( "\ntwitterClient:: twitCurl::friendsIdsGet error:\n%s\n", replyMsg.c_str() );
-    }
-
-    /* Get trends */
-    if( twitterObj.trendsDailyGet() )
-    {
-        twitterObj.getLastWebResponse( replyMsg );
-        printf( "\ntwitterClient:: twitCurl::trendsDailyGet web response:\n%s\n", replyMsg.c_str() );
-    }
-    else
-    {
-        twitterObj.getLastCurlError( replyMsg );
-        printf( "\ntwitterClient:: twitCurl::trendsDailyGet error:\n%s\n", replyMsg.c_str() );
-    }
-#endif // _TWITCURL_TEST_
 
     return 0;
 }
