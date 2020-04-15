@@ -1,5 +1,6 @@
 #include <regex>
 #include <iostream>
+#include <stdlib.h>
 #include "twitterCrawler.h"
 
 
@@ -165,18 +166,25 @@ int main( int argc, char* argv[] )
     **************************************************************************/
     // When code is broken up for multithreading, there will need to be a separate data structure
     // because the searcher's crawledIds data structure is forever changing (additions and sorting).
+    std::string screen_name;
+    std::string pfp_url;
+    std::string wget_cmd;
     std::vector<int>::iterator ptr;
     for(ptr=crawledIds.begin(); ptr < crawledIds.end(); ptr++)
     {
         // Get user information.
         nextCursor = "";
-        if( twitterObj.userGet(std::to_string(*ptr), true))
+        screen_name = std::to_string(*ptr);
+        if( twitterObj.userGet(screen_name, true))
         {
             twitterObj.getLastWebResponse(replyMsg);
-            printf( "\ntwitterClient:: twitCurl::userGet web response:\n%s\n", replyMsg.c_str() );
+            printf( "\n[+] Attempting to grab pfp...");
 
             // Extract profile_image_url_https from replyMsg and download it.
-            //system("wget -nd -nH -O ./images/<user_screen_name>.jpg <https_url>");
+            pfp_url = parse_pfp_url(replyMsg);
+            wget_cmd = "curl " + pfp_url + " --create-dirs -o ./images/" + screen_name + ".jpg ";
+            system(wget_cmd.c_str());
+            printf("\n[+] Successful pfp grab!");
         }
         else
         {
@@ -184,19 +192,6 @@ int main( int argc, char* argv[] )
             printf( "\ntwitterClient:: twitCurl::userGet error:\n%s\n", replyMsg.c_str() );
         }
     }
-    
-
-    /*
-    if ( twitterObj.userGet(start_user, false) ) {
-        twitterObj.getLastWebResponse( twitter_response );
-        printf("Worked\n");
-        url = parse_pfp_url(twitter_response);
-        std::cout << url << std::endl;
-    } else {
-        twitterObj.getLastCurlError( replyMsg );
-        printf("Did not work\n");
-    }*/
-
 }
 
 
