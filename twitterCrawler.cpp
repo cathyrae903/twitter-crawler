@@ -1,8 +1,16 @@
+#include <regex>
+#include <iostream>
+#include <stdlib.h>
 #include "twitterCrawler.h"
+
+
+std::string parse_pfp_url(std::string xml_data);
+
+
 
 int main( int argc, char* argv[] )
 {
-    // Get credentials from file.
+    // Get account credentials from file.
     std::ifstream credentials;
     std::string username("");
     std::string password("");
@@ -17,6 +25,7 @@ int main( int argc, char* argv[] )
     /* OAuth flow begins */
     twitCurl twitterObj;
     std::string tmpStr, tmpStr2;
+    // Stores the JSON data returned from an API request
     std::string replyMsg;
     char tmpBuf[1024];
 
@@ -24,6 +33,7 @@ int main( int argc, char* argv[] )
     std::ifstream consumerKeyIn;
     std::ifstream consumerKeySecretIn;
 
+    // Step 1.a: Retrieve consumer keys from file
     consumerKeyIn.open( "consumer_token_key.txt" );
     consumerKeySecretIn.open( "consumer_token_secret.txt" );
 
@@ -38,7 +48,7 @@ int main( int argc, char* argv[] )
     consumerKeyIn.close();
     consumerKeySecretIn.close();
 
-    // Step 1: Retrieve OAuth access token from files
+    // Step 1.b: Retrieve OAuth access token from files
     std::string myOAuthAccessTokenKey("");
     std::string myOAuthAccessTokenSecret("");
     std::ifstream oAuthTokenKeyIn;
@@ -61,7 +71,7 @@ int main( int argc, char* argv[] )
     if( myOAuthAccessTokenKey.size() && myOAuthAccessTokenSecret.size() )
     {
         // If we already have these keys, then no need to go through auth again
-        printf("Found OAuth Access Token\n");
+        printf("[+] Found OAuth Access Token\n");
         //printf( "\nUsing:\nKey: %s\nSecret: %s\n\n", myOAuthAccessTokenKey.c_str(), myOAuthAccessTokenSecret.c_str() );
 
         twitterObj.getOAuth().setOAuthTokenKey( myOAuthAccessTokenKey );
@@ -69,29 +79,30 @@ int main( int argc, char* argv[] )
     }
     else
     {
-        printf("OAuth failed.\n");
+        printf("[-] OAuth failed.\n");
         return 511;
     }
     /* OAuth flow ends */
 
     // Account credentials verification
-    if( twitterObj.accountVerifyCredGet() )
-    {
+    if( twitterObj.accountVerifyCredGet() ) {
         twitterObj.getLastWebResponse( replyMsg );
-        printf("\nAccount Credential Verification Successful.\n");
+        printf("[+] Account Credential Verification Successful.\n");
         //printf("\ntwitterClient:: twitCurl::accountVerifyCredGet web response:\n%s\n", replyMsg.c_str());
     }
     else
     {
         twitterObj.getLastCurlError( replyMsg );
-        printf("\nAccount Credential Verification Unsuccessful!\n");
-        printf("\ntwitterClient:: twitCurl::accountVerifyCredGet error:\n%s\n", replyMsg.c_str());
+        printf("\n[-] Account Credential Verification Unsuccessful!\n");
+        printf("\n[-] twitterClient:: twitCurl::accountVerifyCredGet error:\n%s\n", replyMsg.c_str());
     }
 
     std::queue<int> followers;      // Queue for followers that need to be crawled.
     std::vector<int> crawledIds;    // IDs of users that have been crawled/searched?
-
     std::string nextCursor("");
+    std::string twitter_response;               // Stores the xml response
+    //std::string start_user = "cheetah1704";     // Username to start search at
+    //std::string url;
 
     /**************************************************************************
     *                                 Searcher
@@ -155,18 +166,25 @@ int main( int argc, char* argv[] )
     **************************************************************************/
     // When code is broken up for multithreading, there will need to be a separate data structure
     // because the searcher's crawledIds data structure is forever changing (additions and sorting).
+    std::string screen_name;
+    std::string pfp_url;
+    std::string wget_cmd;
     std::vector<int>::iterator ptr;
     for(ptr=crawledIds.begin(); ptr < crawledIds.end(); ptr++)
     {
         // Get user information.
         nextCursor = "";
-        if( twitterObj.userGet(std::to_string(*ptr), true))
+        screen_name = std::to_string(*ptr);
+        if( twitterObj.userGet(screen_name, true))
         {
             twitterObj.getLastWebResponse(replyMsg);
-            printf( "\ntwitterClient:: twitCurl::userGet web response:\n%s\n", replyMsg.c_str() );
+            printf( "\n[+] Attempting to grab pfp...");
 
             // Extract profile_image_url_https from replyMsg and download it.
-            //system("wget -nd -nH -O ./images/<user_screen_name>.jpg <https_url>");
+            pfp_url = parse_pfp_url(replyMsg);
+            wget_cmd = "curl " + pfp_url + " --create-dirs -o ./images/" + screen_name + ".jpg ";
+            system(wget_cmd.c_str());
+            printf("\n[+] Successful pfp grab!");
         }
         else
         {
@@ -174,6 +192,23 @@ int main( int argc, char* argv[] )
             printf( "\ntwitterClient:: twitCurl::userGet error:\n%s\n", replyMsg.c_str() );
         }
     }
+}
 
-    return 0;
+
+// Takes a set of JSON data from the twitter response and parses out the pfp url for download
+std::string parse_pfp_url(std::string xml_data) {
+    std::regex rePFP ("profile_image_url\":\"(.+?(?=\"))"); // To find a profile picture url
+    std::smatch match;
+    std::string url; 
+
+    // Pull the url out of the xml_data
+    std::regex_search(xml_data, match, rePFP);
+    url = match.str(1);
+    for (int i = 0; i < url.length(); i++) {
+        if (url[i] == '\\') {
+            url.erase(i, 1);
+            i--;
+        }
+    }
+    return url;
 }
