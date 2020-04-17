@@ -9,7 +9,7 @@ libcurl :
 
 
 twitterCrawler : libcurl twitterCrawler.cpp
-	$(CC) twitterCrawler.cpp -I./include/ -L /usr/local/lib/ -ltwitcurl -o crawler
+	$(CC) twitterCrawler.cpp -I./include/ -L /usr/local/lib/ -ltwitcurl -lpthread -o crawler
 
 
 clean : 

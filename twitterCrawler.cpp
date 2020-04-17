@@ -5,11 +5,18 @@
 
 
 std::string parse_pfp_url(std::string xml_data);
-
+void startDownloader(twitCurl &twitterObj, std::vector<int> &downloadIds);
 
 
 int main( int argc, char* argv[] )
 {
+    std::vector<std::thread> downloaderThreads;
+    std::queue<int> followers;          // Queue for followers that need to be crawled.
+    std::vector<int> crawledIds;        // IDs of users that have been crawled/searched?
+    std::vector<int> downloadIds;       // IDs of users whose profile pictures need to bd downloaded.
+    std::string nextCursor("");
+    std::string twitter_response;       // Stores the xml response
+
     // Get account credentials from file.
     std::ifstream credentials;
     std::string username("");
@@ -97,10 +104,6 @@ int main( int argc, char* argv[] )
         printf("\n[-] twitterClient:: twitCurl::accountVerifyCredGet error:\n%s\n", replyMsg.c_str());
     }
 
-    std::queue<int> followers;      // Queue for followers that need to be crawled.
-    std::vector<int> crawledIds;    // IDs of users that have been crawled/searched?
-    std::string nextCursor("");
-    std::string twitter_response;               // Stores the xml response
     //std::string start_user = "cheetah1704";     // Username to start search at
     //std::string url;
 
@@ -154,44 +157,69 @@ int main( int argc, char* argv[] )
             crawledIds.push_back(followers.front());
             // Sort the vector in ascending order so that search is quicker.
             std::sort(crawledIds.begin(), crawledIds.end());
+
+            downloadIds.push_back(followers.front());
         }
 
         // Remove this user from the queue.
         followers.pop();
     } while(!nextCursor.empty() && nextCursor.compare("0") && !followers.empty() && depth < MAX_DEPTH);
 
-    
-    /**************************************************************************
-    *                                Downloader
-    **************************************************************************/
-    // When code is broken up for multithreading, there will need to be a separate data structure
-    // because the searcher's crawledIds data structure is forever changing (additions and sorting).
-    std::string screen_name;
-    std::string pfp_url;
-    std::string wget_cmd;
-    std::vector<int>::iterator ptr;
-    for(ptr=crawledIds.begin(); ptr < crawledIds.end(); ptr++)
+
+    downloaderThreads.push_back(std::thread(&startDownloader, std::ref(twitterObj), std::ref(downloadIds)));
+
+
+    // Wait for execution to finish and join all threads back to main.
+    std::vector<std::thread>::iterator itr;
+    // Check all threads until none are remaining.
+    while(downloaderThreads.size() > 0)
+    {
+        for(itr=downloaderThreads.begin(); itr < downloaderThreads.end(); itr++)
+        {
+            if((*itr).joinable())
+            {
+                // Join thread and remove it from looping structure if it is finished.
+                (*itr).join();
+                downloaderThreads.erase(itr);
+                itr--;
+            }
+        }
+    }
+
+    return 0;
+}
+
+
+
+// Downloader
+// Download the profile pictures for users whose ID is in downloadIds.
+void startDownloader(twitCurl &twitterObj, std::vector<int> &downloadIds)
+{
+    std::string userId;
+    std::vector<int>::iterator itr;
+    std::string replyMsg;
+
+    for(itr=downloadIds.begin(); itr < downloadIds.end(); itr++)
     {
         // Get user information.
-        nextCursor = "";
-        screen_name = std::to_string(*ptr);
-        if( twitterObj.userGet(screen_name, true))
+        //nextCursor = "";
+        userId = std::to_string(*itr);
+        if( twitterObj.userGet(userId, true))
         {
             twitterObj.getLastWebResponse(replyMsg);
-            printf( "\n[+] Attempting to grab pfp...");
+            printf( "[+] Attempting to grab pfp...\n");
 
             // Extract profile_image_url_https from replyMsg and download it.
-            pfp_url = parse_pfp_url(replyMsg);
-            wget_cmd = "curl " + pfp_url + " --create-dirs -o ./images/" + screen_name + ".jpg ";
-            system(wget_cmd.c_str());
-            printf("\n[+] Successful pfp grab!");
+            system(("curl " + parse_pfp_url(replyMsg) + " --create-dirs -o ./images/" + userId + ".jpg ").c_str());
+            printf("[+] Successful pfp grab!\n");
         }
         else
         {
             twitterObj.getLastCurlError(replyMsg);
-            printf( "\ntwitterClient:: twitCurl::userGet error:\n%s\n", replyMsg.c_str() );
+            printf("\ntwitterClient:: twitCurl::userGet error:\n%s\n", replyMsg.c_str());
         }
     }
+    return;
 }
 
 
@@ -212,3 +240,4 @@ std::string parse_pfp_url(std::string xml_data) {
     }
     return url;
 }
+
