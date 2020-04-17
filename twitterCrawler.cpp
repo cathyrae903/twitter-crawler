@@ -4,18 +4,21 @@
 #include "twitterCrawler.h"
 
 
+void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &downloadIds);
 std::string parse_pfp_url(std::string xml_data);
-void startDownloader(twitCurl &twitterObj, std::vector<int> &downloadIds);
+void parseJSONList(std::string xml_data, std::vector<std::string> &ids);
+std::vector<std::string> parseJSONList(std::string xml_data);
 
 
 int main( int argc, char* argv[] )
 {
     std::vector<std::thread> downloaderThreads;
-    std::queue<int> followers;          // Queue for followers that need to be crawled.
-    std::vector<int> crawledIds;        // IDs of users that have been crawled/searched?
-    std::vector<int> downloadIds;       // IDs of users whose profile pictures need to bd downloaded.
+    std::queue<int> followers;                      // Queue for followers that need to be crawled.
+    std::vector<int> crawledIds;                    // IDs of users that have been crawled/searched?
+    std::vector<unsigned long long> downloadIds;    // IDs of users whose profile pictures need to bd downloaded.
+    std::vector<unsigned long long> downloadedIds;  // IDs of users whose profile pictures have been downloaded.
     std::string nextCursor("");
-    std::string twitter_response;       // Stores the xml response
+    std::string twitter_response;                   // Stores the xml response
 
     // Get account credentials from file.
     std::ifstream credentials;
@@ -152,13 +155,17 @@ int main( int argc, char* argv[] )
 
             // Extract follower IDs from web response. 
             // Add extracted follower IDs to queue. Only add if not already in crawledIds? Consider efficiency between this and current method.
+            std::vector<std::string> followersIds = parseJSONList(replyMsg);
+
+            for(int i = 0; i < followersIds.size(); i++)
+            {
+                downloadIds.push_back(strtoull(followersIds[i].c_str(), nullptr, 10));
+            }
 
             // Mark this user as crawled.
             crawledIds.push_back(followers.front());
             // Sort the vector in ascending order so that search is quicker.
             std::sort(crawledIds.begin(), crawledIds.end());
-
-            downloadIds.push_back(followers.front());
         }
 
         // Remove this user from the queue.
@@ -167,7 +174,6 @@ int main( int argc, char* argv[] )
 
 
     downloaderThreads.push_back(std::thread(&startDownloader, std::ref(twitterObj), std::ref(downloadIds)));
-
 
     // Wait for execution to finish and join all threads back to main.
     std::vector<std::thread>::iterator itr;
@@ -190,13 +196,12 @@ int main( int argc, char* argv[] )
 }
 
 
-
 // Downloader
 // Download the profile pictures for users whose ID is in downloadIds.
-void startDownloader(twitCurl &twitterObj, std::vector<int> &downloadIds)
+void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &downloadIds)
 {
     std::string userId;
-    std::vector<int>::iterator itr;
+    std::vector<long long unsigned int>::iterator itr;
     std::string replyMsg;
 
     for(itr=downloadIds.begin(); itr < downloadIds.end(); itr++)
@@ -207,11 +212,13 @@ void startDownloader(twitCurl &twitterObj, std::vector<int> &downloadIds)
         if( twitterObj.userGet(userId, true))
         {
             twitterObj.getLastWebResponse(replyMsg);
-            printf( "[+] Attempting to grab pfp...\n");
+            printf("[+] Attempting to grab pfp...\n");
 
             // Extract profile_image_url_https from replyMsg and download it.
             system(("curl " + parse_pfp_url(replyMsg) + " --create-dirs -o ./images/" + userId + ".jpg ").c_str());
             printf("[+] Successful pfp grab!\n");
+
+            // TODO: Add checking for if the profile picture was alreaded downloaded with downloadedIds.
         }
         else
         {
@@ -239,5 +246,34 @@ std::string parse_pfp_url(std::string xml_data) {
         }
     }
     return url;
+}
+
+// Takes JSON data from the twitter response and parses out IDs
+std::vector<std::string> parseJSONList(std::string xml_data)//, std::vector<std::string> &ids)
+{
+    std::vector<std::string> ids;
+    std::regex reIdList("\\[[\\d, ]*\\]");
+    std::regex reIds("(\\d{5,})");
+    std::smatch matches;
+    std::string idList;
+
+    // Pull the objects out of the xml_data
+    if(std::regex_search(xml_data, matches, reIdList))
+    {
+        // Grab the list part of the string for easier parsing.
+        idList = matches[0].str();
+
+        // Grab each group that matches the regex.
+        std::sregex_iterator itr(idList.begin(), idList.end(), reIds);
+        std::sregex_iterator end;
+        while(itr != end)
+        {
+            std::smatch match = *itr;
+            ids.push_back(*(new std::string(match.str())));
+            itr++;
+        }
+    }
+
+    return ids;
 }
 
