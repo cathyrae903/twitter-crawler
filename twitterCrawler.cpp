@@ -6,9 +6,9 @@
 
 void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &downloadIds);
 std::string parse_pfp_url(std::string xml_data);
-void parseJSONList(std::string xml_data, std::vector<std::string> &ids);
 std::vector<std::string> parseJSONList(std::string xml_data);
 
+std::mutex downloadMutex;
 
 int main( int argc, char* argv[] )
 {
@@ -172,7 +172,9 @@ int main( int argc, char* argv[] )
         followers.pop();
     } while(!nextCursor.empty() && nextCursor.compare("0") && !followers.empty() && depth < MAX_DEPTH);
 
-
+    downloaderThreads.push_back(std::thread(&startDownloader, std::ref(twitterObj), std::ref(downloadIds)));
+    downloaderThreads.push_back(std::thread(&startDownloader, std::ref(twitterObj), std::ref(downloadIds)));
+    downloaderThreads.push_back(std::thread(&startDownloader, std::ref(twitterObj), std::ref(downloadIds)));
     downloaderThreads.push_back(std::thread(&startDownloader, std::ref(twitterObj), std::ref(downloadIds)));
 
     // Wait for execution to finish and join all threads back to main.
@@ -201,30 +203,36 @@ int main( int argc, char* argv[] )
 void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &downloadIds)
 {
     std::string userId;
-    std::vector<long long unsigned int>::iterator itr;
     std::string replyMsg;
 
-    for(itr=downloadIds.begin(); itr < downloadIds.end(); itr++)
+    while(!downloadIds.empty())
     {
-        // Get user information.
-        //nextCursor = "";
-        userId = std::to_string(*itr);
-        if( twitterObj.userGet(userId, true))
+        // Begin critical section.
+        downloadMutex.lock();
+        if(!downloadIds.empty())
         {
-            twitterObj.getLastWebResponse(replyMsg);
-            printf("[+] Attempting to grab pfp...\n");
+            userId = std::to_string(*downloadIds.begin());
 
-            // Extract profile_image_url_https from replyMsg and download it.
-            system(("curl " + parse_pfp_url(replyMsg) + " --create-dirs -o ./images/" + userId + ".jpg ").c_str());
-            printf("[+] Successful pfp grab!\n");
+            downloadIds.erase(downloadIds.begin());
 
-            // TODO: Add checking for if the profile picture was alreaded downloaded with downloadedIds.
+            // Get user information.
+            //nextCursor = "";
+            if( twitterObj.userGet(userId, true))
+            {
+                twitterObj.getLastWebResponse(replyMsg);
+            }
+            else
+            {
+                twitterObj.getLastCurlError(replyMsg);
+                printf("\ntwitterClient:: twitCurl::userGet error:\n%s\n", replyMsg.c_str());
+            }
         }
-        else
-        {
-            twitterObj.getLastCurlError(replyMsg);
-            printf("\ntwitterClient:: twitCurl::userGet error:\n%s\n", replyMsg.c_str());
-        }
+        downloadMutex.unlock();
+        // End critical section.
+
+        // Extract profile_image_url_https from replyMsg and download it.
+        printf("[+] Grabbing pfp...\n");
+        system(("curl " + parse_pfp_url(replyMsg) + " -s --create-dirs -o ./images/" + userId + ".jpg ").c_str());
     }
     return;
 }
