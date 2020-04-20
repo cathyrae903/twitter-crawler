@@ -1,5 +1,6 @@
 # Makefile 
-
+ASANFLAGS = -g -fsanitize=address -fno-omit-frame-pointer
+FLAGS = -O2
 CC=g++
 
 all : twitterCrawler
@@ -9,8 +10,10 @@ libcurl :
 
 
 twitterCrawler : libcurl twitterCrawler.cpp
-	$(CC) twitterCrawler.cpp -I./include/ -L /usr/local/lib/ -ltwitcurl -lpthread -o crawler
+	$(CC) twitterCrawler.cpp ${FLAGS} -I./include/ -L /usr/local/lib/ -ltwitcurl -lpthread -o crawler
 
+debug: FLAGS=${ASANFLAGS}
+debug: twitterCrawler
 
 clean : 
 		rm crawler
