@@ -11,11 +11,12 @@ void startSearcher(twitCurl &twitterObj, std::queue<long long unsigned int> &fol
                     int &followerCount, std::string &nextCursor);
 std::string parse_pfp_url(std::string xml_data);
 std::vector<std::string> parseJSONList(std::string xml_data);
+std::string parseJSONScreenName(std::string xml_data);
 
 std::mutex searchMutex;
 std::mutex downloadMutex;
 
-const int MAX_FOLLOWERS = 10;
+const int MAX_FOLLOWERS = 1;
 static std::string nextCursor("");
 
 int main( int argc, char* argv[] )
@@ -211,7 +212,7 @@ void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &
         if(!userId.empty())
         {
             printf("[+] Grabbing pfp...\n");
-            system(("curl " + parse_pfp_url(replyMsg) + " -s --create-dirs -o ./images/" + userId + ".jpg ").c_str());
+            system(("curl " + parse_pfp_url(replyMsg) + " -s --create-dirs -o ./images/" + parseJSONScreenName(replyMsg) + ".jpg ").c_str());
         }
     }
     return;
@@ -340,11 +341,24 @@ std::vector<std::string> parseJSONList(std::string xml_data)//, std::vector<std:
         while(itr != end)
         {
             std::smatch match = *itr;
-            ids.push_back(*(new std::string(match.str())));
+            ids.push_back(std::string(match.str()));
             itr++;
         }
     }
 
     return ids;
+}
+
+// Takes JSON data from the twitter response and parses out the screen name.
+std::string parseJSONScreenName(std::string xml_data)
+{
+    std::regex reScreenName("\"screen_name\":\"([^\"]*)\"");
+    std::smatch match;
+
+    // Pull the information out of the xml_data
+    if(std::regex_search(xml_data, match, reScreenName))
+        // Grab the screen name in group 1
+         return match[1].str();
+    return "";
 }
 
