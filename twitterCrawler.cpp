@@ -1,24 +1,6 @@
 #include "twitterCrawler.h"
 
-int authenticate(twitCurl &twitterObj);
 
-void startDownloader(twitCurl &twitterObj,
-                     std::vector<long long unsigned int> &downloadIds, 
-                     const bool &keepWaiting,
-                     std::vector<std::chrono::duration<int, std::micro>> &downloaderDurations);
-
-void startSearcher(twitCurl &twitterObj,
-                    std::queue<long long unsigned int> &followers,
-                    std::vector<long long unsigned int> &crawledIds,
-                    std::vector<long long unsigned int> &downloadIds,
-                    int &followerCount,
-                    std::vector<std::chrono::duration<int, std::micro>> &searcherDurations);
-
-std::vector<std::string> parseJSONList(std::string xml_data);
-
-std::string parsePFPUrl(std::string xml_data);
-
-std::string parseJSONScreenName(std::string xml_data);
 
 const long long unsigned int START_USER_ID = 258604828;
 const int MAX_FOLLOWERS = 5;
@@ -37,9 +19,8 @@ int main( int argc, char* argv[] )
     std::queue<unsigned long long> followers;       // Queue for followers that need to be crawled.
     std::vector<unsigned long long> crawledIds;     // IDs of users that have been crawled/searched?
     std::vector<unsigned long long> downloadIds;    // IDs of users whose profile pictures need to bd downloaded.
-    std::vector<unsigned long long> downloadedIds;  // IDs of users whose profile pictures have been downloaded.
-    std::string twitter_response;                   // Stores the xml response
-    std::string replyMsg;
+    std::vector<unsigned long long> downloadedIds;  // IDs of users whose profile pictures have been downloaded.         
+    std::string replyMsg;                           // Stores the xml response
     
     // Authenticate
     twitCurl twitterObj;
@@ -68,12 +49,11 @@ int main( int argc, char* argv[] )
         printf("[-] Incorrect arguments passed. Using 1 Searcher thread and 1 Downloader thread.\n");
     }
 
-    // Clone the twitter object for use in the searcher and downloader threads.
-    twitCurl* clonedTwitterObj = twitterObj.clone();
-    // Prepare a stopping condition of MAX_FOLLOWERS.
-    int followerCount = 0;
-    // Flag for if downloaders can complete or need to wait for searcher to fill up data structure.
-    bool keepWaiting = true;
+    
+    twitCurl* clonedTwitterObj = twitterObj.clone(); // Clone the twitter object for use in the searcher and downloader threads.
+    int followerCount = 0; // Prepare a stopping condition of MAX_FOLLOWERS.
+    bool keepWaiting = true; // Flag for if downloaders can complete or need to wait for searcher to fill up data structure.
+   
     // Start the search with one user's screen-name.
     followers.push(START_USER_ID);
     downloadIds.push_back(START_USER_ID);
@@ -137,6 +117,7 @@ int main( int argc, char* argv[] )
     // Stop the timer for program execution.
     auto overall_stop = high_resolution_clock::now();
 
+    // Save the results
     std::ofstream results;
     results.open("crawler_results.txt", std::ios::app);
     if(results.is_open())
@@ -250,8 +231,10 @@ int authenticate(twitCurl &twitterObj)
 
 // Downloader
 // Download the profile pictures for users whose ID is in downloadIds.
-void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &downloadIds,
-                    const bool &keepWaiting, std::vector<std::chrono::duration<int, std::micro>> &downloaderDurations)
+void startDownloader(twitCurl &twitterObj,
+                     std::vector<long long unsigned int> &downloadIds,
+                     const bool &keepWaiting, 
+                     std::vector<std::chrono::duration<int, std::micro>> &downloaderDurations)
 {
     std::string userId;
     std::string replyMsg;
@@ -303,7 +286,6 @@ void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &
 
     // Stop this thread's timer.
     auto stop = high_resolution_clock::now();
-
     downloaderDurations.push_back(duration_cast<microseconds>(stop - start));
 
     return;
