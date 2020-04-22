@@ -22,13 +22,6 @@ std::mutex downloadMutex;
 int main( int argc, char* argv[] )
 {
     std::vector<std::thread> searcherThreads;
-    // Authenticate
-    twitCurl twitterObj;
-    int response_code;
-    response_code = authenticate(twitterObj);
-    if (response_code != 0) 
-        return response_code;
-
     std::vector<std::thread> downloaderThreads;
     std::queue<unsigned long long> followers;       // Queue for followers that need to be crawled.
     std::vector<unsigned long long> crawledIds;     // IDs of users that have been crawled/searched?
@@ -36,25 +29,19 @@ int main( int argc, char* argv[] )
     std::vector<unsigned long long> downloadedIds;  // IDs of users whose profile pictures have been downloaded.
     std::string twitter_response;                   // Stores the xml response
     std::string replyMsg;
+    
+    // Authenticate
+    twitCurl twitterObj;
+    int response_code;
+    response_code = authenticate(twitterObj);
+    if (response_code != 0) 
+        return response_code;
 
-
-
-    //std::string start_user = "cheetah1704";     // Username to start search at
-    //std::string url;
-
-    /**************************************************************************
-    *                                 Searcher
-    **************************************************************************/
-    // Prepare a stopping condition of 4 levels deep.
-    // This means 
-    const int MAX_DEPTH = 1;
-    int depth = 0;
-    // Start the search with one user's screen-name.
-    followers.push(258604828);
-
-    // This starts a timer for the program as a whole
-    auto overall_start = high_resolution_clock::now();
-    do
+    // Command line inputs we get the number of inputs for the user and also the number of searcher threads
+    // and also the number of download threads and we put them in variables so we can use them elsewhere
+    // in the code. If we didnt save these in variables there would be no way for us to declare the number
+    // of searcher and downloader threads which would be really bad.
+    try
     {
         if(argc == 3 && (std::stoi(argv[1]) > 1 && std::stoi(argv[2]) > 1))
         {
@@ -82,6 +69,9 @@ int main( int argc, char* argv[] )
     followers.push(START_USER_ID);
     downloadIds.push_back(START_USER_ID);
 
+
+    // This starts a timer for the program as a whole
+    auto overall_start = high_resolution_clock::now();
     // Start the threads.
     for(int i = 0; i < numSearcherThreads; i++)
     {
@@ -100,10 +90,10 @@ int main( int argc, char* argv[] )
     {
         for(itr=searcherThreads.begin(); itr < searcherThreads.end(); itr++)
         {
-            if((*itr).joinable())
+            if(itr->joinable())
             {
                 // Join thread and remove it from looping structure if it is finished.
-                (*itr).join();
+                itr->join();
                 searcherThreads.erase(itr);
                 itr--;
                 printf("[+] Searcher thread joined.\n");
@@ -115,10 +105,10 @@ int main( int argc, char* argv[] )
     {
         for(itr=downloaderThreads.begin(); itr < downloaderThreads.end(); itr++)
         {
-            if((*itr).joinable())
+            if(itr->joinable())
             {
                 // Join thread and remove it from looping structure if it is finished.
-                (*itr).join();
+                itr->join();
                 downloaderThreads.erase(itr);
                 itr--;
                 printf("[+] Downloader thread joined.\n");
@@ -234,7 +224,7 @@ void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &
         downloadMutex.lock();
         if(!downloadIds.empty())
         {
-            userId = std::to_string(*downloadIds.begin());
+            userId = std::to_string(*(downloadIds.begin()));
 
             downloadIds.erase(downloadIds.begin());
 
@@ -264,6 +254,8 @@ void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &
             system(("curl " + parse_pfp_url(replyMsg) + " -s --create-dirs -o ./images/" + parseJSONScreenName(replyMsg) + ".jpg ").c_str());
         }
     }
+    auto stop = high_resolution_clock::now();
+    std::cout << "Downloader time: " << duration_cast<microseconds>(stop - start).count() << " microseconds" << std::endl;
     return;
 }
 
@@ -277,6 +269,7 @@ void startSearcher(twitCurl &twitterObj, std::queue<long long unsigned int> &fol
     std::string replyMsg;
     long long unsigned int userId;
 
+    auto start = high_resolution_clock::now();
     while(!followers.empty() && followerCount < MAX_FOLLOWERS)
     {
         // Begin critical section.
@@ -345,9 +338,10 @@ void startSearcher(twitCurl &twitterObj, std::queue<long long unsigned int> &fol
             crawledIds.push_back(userId);
             // Sort the vector in ascending order so that search is quicker.
             std::sort(crawledIds.begin(), crawledIds.end());
+        }
     }
     auto stop = high_resolution_clock::now();
-    std::cout << "Downloader time: " << duration_cast<microseconds>(stop - start).count() << " microseconds" << std::endl;
+    std::cout << "Searcher time: " << duration_cast<microseconds>(stop - start).count() << " microseconds" << std::endl;
     return;
 }
 
