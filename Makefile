@@ -14,4 +14,5 @@ twitterCrawler : libcurl twitterCrawler.cpp
 
 clean : 
 		rm crawler
+		rm -dr images
 		cd ./libtwitcurl && sudo make clean

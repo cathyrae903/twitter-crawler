@@ -4,20 +4,32 @@
 #include "twitterCrawler.h"
 
 
-void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &downloadIds);
+void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &downloadIds, const bool &keepWaiting);
+void startSearcher(twitCurl &twitterObj, std::queue<long long unsigned int> &followers,
+                    std::vector<long long unsigned int> &crawledIds,
+                    std::vector<long long unsigned int> &downloadIds,
+                    int &followerCount, std::string &nextCursor);
 std::string parse_pfp_url(std::string xml_data);
 std::vector<std::string> parseJSONList(std::string xml_data);
+std::string parseJSONScreenName(std::string xml_data);
 
+const long long unsigned int START_USER_ID = 258604828;
+const int MAX_FOLLOWERS = 5;
+static std::string nextCursor("");
+static int numSearcherThreads = 1;
+static int numDownloaderThreads = 1;
+
+std::mutex searchMutex;
 std::mutex downloadMutex;
 
 int main( int argc, char* argv[] )
 {
+    std::vector<std::thread> searcherThreads;
     std::vector<std::thread> downloaderThreads;
-    std::queue<int> followers;                      // Queue for followers that need to be crawled.
-    std::vector<int> crawledIds;                    // IDs of users that have been crawled/searched?
+    std::queue<unsigned long long> followers;       // Queue for followers that need to be crawled.
+    std::vector<unsigned long long> crawledIds;     // IDs of users that have been crawled/searched?
     std::vector<unsigned long long> downloadIds;    // IDs of users whose profile pictures need to bd downloaded.
     std::vector<unsigned long long> downloadedIds;  // IDs of users whose profile pictures have been downloaded.
-    std::string nextCursor("");
     std::string twitter_response;                   // Stores the xml response
 
     // Get account credentials from file.
@@ -107,32 +119,172 @@ int main( int argc, char* argv[] )
         printf("\n[-] twitterClient:: twitCurl::accountVerifyCredGet error:\n%s\n", replyMsg.c_str());
     }
 
-    //std::string start_user = "cheetah1704";     // Username to start search at
-    //std::string url;
-
-    /**************************************************************************
-    *                                 Searcher
-    **************************************************************************/
-    // Prepare a stopping condition of 4 levels deep.
-    // This means 
-    const int MAX_DEPTH = 1;
-    int depth = 0;
-    // Start the search with one user's screen-name.
-    followers.push(258604828);
-    do
+    // Get number of searcher and downloader threads from the command line.
+    // If both values aren't present, they are assumed to be 1.
+    try
     {
-        // Only examine this user's followers if this user has not already been crawled.
-        if(!std::binary_search(crawledIds.begin(), crawledIds.end(), followers.front()))
+        if(argc == 3 && (std::stoi(argv[1]) > 1 && std::stoi(argv[2]) > 1))
         {
-            // Increase the depth of the "searcher".
-            depth++; 
+            numSearcherThreads = static_cast<int>(std::stoi(argv[1]));
+            numDownloaderThreads = static_cast<int>(std::stoi(argv[2]));
+            printf("[+] Arguments passed for number of threads. Using %d Searcher threads and %d Downloader threads.\n", numSearcherThreads, numDownloaderThreads);
+        }
+        else
+        {
+            throw std::invalid_argument("invalid_argument");
+        }
+    }
+    catch(std::exception e)
+    {
+        printf("[-] Incorrect arguments passed. Using 1 Searcher thread and 1 Downloader thread.\n");
+    }
 
-            // Get this user's followers' IDs.
-            if(twitterObj.followersIdsGet(nextCursor, std::to_string(followers.front()), true))
+    // Clone the twitter object for use in the searcher and downloader threads.
+    twitCurl* clonedTwitterObj = twitterObj.clone();
+    // Prepare a stopping condition of MAX_FOLLOWERS.
+    int followerCount = 0;
+    // Flag for if downloaders can complete or need to wait for searcher to fill up data structure.
+    bool keepWaiting = true;
+    // Start the search with one user's screen-name.
+    followers.push(START_USER_ID);
+    downloadIds.push_back(START_USER_ID);
+
+    // Start the threads.
+    for(int i = 0; i < numSearcherThreads; i++)
+    {
+        searcherThreads.push_back(std::thread(&startSearcher, std::ref(*clonedTwitterObj),
+                                  std::ref(followers), std::ref(crawledIds), std::ref(downloadIds), std::ref(followerCount), std::ref(nextCursor)));
+    }
+    for(int i = 0; i < numDownloaderThreads; i++)
+    {
+        downloaderThreads.push_back(std::thread(&startDownloader, std::ref(twitterObj), std::ref(downloadIds), std::ref(keepWaiting)));
+    }
+
+    // Wait for execution to finish and join all threads back to main.
+    std::vector<std::thread>::iterator itr;
+    // Check all threads until none are remaining.
+    while(searcherThreads.size() > 0)
+    {
+        for(itr=searcherThreads.begin(); itr < searcherThreads.end(); itr++)
+        {
+            if((*itr).joinable())
+            {
+                // Join thread and remove it from looping structure if it is finished.
+                (*itr).join();
+                searcherThreads.erase(itr);
+                itr--;
+                printf("[+] Searcher thread joined.\n");
+            }
+        }
+    }
+    keepWaiting = false;
+    while(downloaderThreads.size() > 0)
+    {
+        for(itr=downloaderThreads.begin(); itr < downloaderThreads.end(); itr++)
+        {
+            if((*itr).joinable())
+            {
+                // Join thread and remove it from looping structure if it is finished.
+                (*itr).join();
+                downloaderThreads.erase(itr);
+                itr--;
+                printf("[+] Downloader thread joined.\n");
+            }
+        }
+    }
+
+    return 0;
+}
+
+
+// Downloader
+// Download the profile pictures for users whose ID is in downloadIds.
+void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &downloadIds, const bool &keepWaiting)
+{
+    std::string userId;
+    std::string replyMsg;
+
+    while(keepWaiting || !downloadIds.empty())
+    {
+        // Begin critical section.
+        downloadMutex.lock();
+        if(!downloadIds.empty())
+        {
+            userId = std::to_string(*downloadIds.begin());
+
+            downloadIds.erase(downloadIds.begin());
+
+            // Get user information.
+            //nextCursor = "";
+            if(twitterObj.userGet(userId, true))
             {
                 twitterObj.getLastWebResponse(replyMsg);
-                printf( "\ntwitterClient:: twitCurl::followersIdsGet for user [%d] web response:\n%s\n",
-                        followers.front(), replyMsg.c_str() );
+            }
+            else
+            {
+                twitterObj.getLastCurlError(replyMsg);
+                printf("\ntwitterClient:: twitCurl::userGet error:\n%s\n", replyMsg.c_str());
+            }
+        }
+        else
+        {
+            userId = "";
+        }
+        downloadMutex.unlock();
+        // End critical section.
+
+        // Extract profile_image_url_https from replyMsg and download it.
+        if(!userId.empty())
+        {
+            printf("[+] Grabbing pfp...\n");
+            system(("curl " + parse_pfp_url(replyMsg) + " -s --create-dirs -o ./images/" + parseJSONScreenName(replyMsg) + ".jpg ").c_str());
+        }
+    }
+    return;
+}
+
+
+// Searcher
+void startSearcher(twitCurl &twitterObj, std::queue<long long unsigned int> &followers,
+                    std::vector<long long unsigned int> &crawledIds,
+                    std::vector<long long unsigned int> &downloadIds,
+                    int &followerCount, std::string &nextCursor)
+{
+    std::string replyMsg;
+    long long unsigned int userId;
+
+    while(!followers.empty() && followerCount < MAX_FOLLOWERS)
+    {
+        // Begin critical section.
+        searchMutex.lock();
+        if(!followers.empty())
+        {
+            userId = followers.front();
+            // Remove this user from the queue.
+            followers.pop();
+        }
+        else
+        {
+            userId = 0;
+        }
+        searchMutex.unlock();
+        // End critical section.
+
+        // Only examine this user's followers if this user has not already been crawled.
+        if(userId && !std::binary_search(crawledIds.begin(), crawledIds.end(), userId))
+        {
+            printf("Crawling user %u...\n", userId);
+            // Increase the depth of the "searcher".
+            followerCount++;
+
+            // Begin critical section.
+            searchMutex.lock();
+            // Get this user's followers' IDs.
+            if(twitterObj.followersIdsGet(nextCursor, std::to_string(userId), true))
+            {
+                twitterObj.getLastWebResponse(replyMsg);
+                printf( "twitterClient:: twitCurl::followersIdsGet for user [%u] web response:\n%s\n",
+                        userId, replyMsg.c_str() );
 
                 nextCursor = "";
                 size_t nNextCursorStart = replyMsg.find("next_cursor");
@@ -152,87 +304,24 @@ int main( int argc, char* argv[] )
                 printf( "\ntwitterClient:: twitCurl::followersIdsGet error:\n%s\n", replyMsg.c_str() );
                 break;
             }
+            searchMutex.unlock();
+            // End critical section.
 
-            // Extract follower IDs from web response. 
+            // Extract follower IDs from web response.
             // Add extracted follower IDs to queue. Only add if not already in crawledIds? Consider efficiency between this and current method.
             std::vector<std::string> followersIds = parseJSONList(replyMsg);
 
             for(int i = 0; i < followersIds.size(); i++)
             {
-                downloadIds.push_back(strtoull(followersIds[i].c_str(), nullptr, 10));
+                downloadIds.push_back(strtoull(followersIds[i].c_str(), nullptr, 10)); // base 10
+                followers.push(strtoull(followersIds[i].c_str(), nullptr, 10));
             }
 
             // Mark this user as crawled.
-            crawledIds.push_back(followers.front());
+            crawledIds.push_back(userId);
             // Sort the vector in ascending order so that search is quicker.
             std::sort(crawledIds.begin(), crawledIds.end());
         }
-
-        // Remove this user from the queue.
-        followers.pop();
-    } while(!nextCursor.empty() && nextCursor.compare("0") && !followers.empty() && depth < MAX_DEPTH);
-
-    downloaderThreads.push_back(std::thread(&startDownloader, std::ref(twitterObj), std::ref(downloadIds)));
-    downloaderThreads.push_back(std::thread(&startDownloader, std::ref(twitterObj), std::ref(downloadIds)));
-    downloaderThreads.push_back(std::thread(&startDownloader, std::ref(twitterObj), std::ref(downloadIds)));
-    downloaderThreads.push_back(std::thread(&startDownloader, std::ref(twitterObj), std::ref(downloadIds)));
-
-    // Wait for execution to finish and join all threads back to main.
-    std::vector<std::thread>::iterator itr;
-    // Check all threads until none are remaining.
-    while(downloaderThreads.size() > 0)
-    {
-        for(itr=downloaderThreads.begin(); itr < downloaderThreads.end(); itr++)
-        {
-            if((*itr).joinable())
-            {
-                // Join thread and remove it from looping structure if it is finished.
-                (*itr).join();
-                downloaderThreads.erase(itr);
-                itr--;
-            }
-        }
-    }
-
-    return 0;
-}
-
-
-// Downloader
-// Download the profile pictures for users whose ID is in downloadIds.
-void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &downloadIds)
-{
-    std::string userId;
-    std::string replyMsg;
-
-    while(!downloadIds.empty())
-    {
-        // Begin critical section.
-        downloadMutex.lock();
-        if(!downloadIds.empty())
-        {
-            userId = std::to_string(*downloadIds.begin());
-
-            downloadIds.erase(downloadIds.begin());
-
-            // Get user information.
-            //nextCursor = "";
-            if( twitterObj.userGet(userId, true))
-            {
-                twitterObj.getLastWebResponse(replyMsg);
-            }
-            else
-            {
-                twitterObj.getLastCurlError(replyMsg);
-                printf("\ntwitterClient:: twitCurl::userGet error:\n%s\n", replyMsg.c_str());
-            }
-        }
-        downloadMutex.unlock();
-        // End critical section.
-
-        // Extract profile_image_url_https from replyMsg and download it.
-        printf("[+] Grabbing pfp...\n");
-        system(("curl " + parse_pfp_url(replyMsg) + " -s --create-dirs -o ./images/" + userId + ".jpg ").c_str());
     }
     return;
 }
@@ -277,11 +366,24 @@ std::vector<std::string> parseJSONList(std::string xml_data)//, std::vector<std:
         while(itr != end)
         {
             std::smatch match = *itr;
-            ids.push_back(*(new std::string(match.str())));
+            ids.push_back(std::string(match.str()));
             itr++;
         }
     }
 
     return ids;
+}
+
+// Takes JSON data from the twitter response and parses out the screen name.
+std::string parseJSONScreenName(std::string xml_data)
+{
+    std::regex reScreenName("\"screen_name\":\"([^\"]*)\"");
+    std::smatch match;
+
+    // Pull the information out of the xml_data
+    if(std::regex_search(xml_data, match, reScreenName))
+        // Grab the screen name in group 1
+         return match[1].str();
+    return "";
 }
 
