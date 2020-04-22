@@ -1,20 +1,17 @@
-#include <regex>
-#include <iostream>
-#include <stdlib.h>
 #include "twitterCrawler.h"
-
 
 void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &downloadIds, const bool &keepWaiting);
 void startSearcher(twitCurl &twitterObj, std::queue<long long unsigned int> &followers,
                     std::vector<long long unsigned int> &crawledIds,
                     std::vector<long long unsigned int> &downloadIds,
                     int &followerCount, std::string &nextCursor);
+int authenticate(twitCurl &twitterObj);
 std::string parse_pfp_url(std::string xml_data);
 std::vector<std::string> parseJSONList(std::string xml_data);
 std::string parseJSONScreenName(std::string xml_data);
 
 const long long unsigned int START_USER_ID = 258604828;
-const int MAX_FOLLOWERS = 5;
+const int MAX_FOLLOWERS = 2;
 static std::string nextCursor("");
 static int numSearcherThreads = 1;
 static int numDownloaderThreads = 1;
@@ -31,7 +28,102 @@ int main( int argc, char* argv[] )
     std::vector<unsigned long long> downloadIds;    // IDs of users whose profile pictures need to bd downloaded.
     std::vector<unsigned long long> downloadedIds;  // IDs of users whose profile pictures have been downloaded.
     std::string twitter_response;                   // Stores the xml response
+    std::string replyMsg;
+    
+    // Authenticate
+    twitCurl twitterObj;
+    int response_code;
+    response_code = authenticate(twitterObj);
+    if (response_code != 0) 
+        return response_code;
 
+    // Get number of searcher and downloader threads from the command line.
+    // If both values aren't present, they are assumed to be 1.
+    try
+    {
+        if(argc == 3 && (std::stoi(argv[1]) > 1 && std::stoi(argv[2]) > 1))
+        {
+            numSearcherThreads = static_cast<int>(std::stoi(argv[1]));
+            numDownloaderThreads = static_cast<int>(std::stoi(argv[2]));
+            printf("[+] Arguments passed for number of threads. Using %d Searcher threads and %d Downloader threads.\n", numSearcherThreads, numDownloaderThreads);
+        }
+        else
+        {
+            throw std::invalid_argument("invalid_argument");
+        }
+    }
+    catch(std::exception e)
+    {
+        printf("[-] Incorrect arguments passed. Using 1 Searcher thread and 1 Downloader thread.\n");
+    }
+
+    // Clone the twitter object for use in the searcher and downloader threads.
+    twitCurl* clonedTwitterObj = twitterObj.clone();
+    // Prepare a stopping condition of MAX_FOLLOWERS.
+    int followerCount = 0;
+    // Flag for if downloaders can complete or need to wait for searcher to fill up data structure.
+    bool keepWaiting = true;
+    // Start the search with one user's screen-name.
+    followers.push(START_USER_ID);
+    downloadIds.push_back(START_USER_ID);
+
+    // Start the timer for program execution.
+    auto overall_start = high_resolution_clock::now();
+
+    // Start the threads.
+    for(int i = 0; i < numSearcherThreads; i++)
+    {
+        searcherThreads.push_back(std::thread(&startSearcher, std::ref(*clonedTwitterObj),
+                                  std::ref(followers), std::ref(crawledIds), std::ref(downloadIds), std::ref(followerCount), std::ref(nextCursor)));
+    }
+    for(int i = 0; i < numDownloaderThreads; i++)
+    {
+        downloaderThreads.push_back(std::thread(&startDownloader, std::ref(twitterObj), std::ref(downloadIds), std::ref(keepWaiting)));
+    }
+
+    // Wait for execution to finish and join all threads back to main.
+    std::vector<std::thread>::iterator itr;
+    // Check all threads until none are remaining.
+    while(searcherThreads.size() > 0)
+    {
+        for(itr=searcherThreads.begin(); itr < searcherThreads.end(); itr++)
+        {
+            if(itr->joinable())
+            {
+                // Join thread and remove it from looping structure if it is finished.
+                itr->join();
+                searcherThreads.erase(itr);
+                itr--;
+                printf("[+] Searcher thread joined.\n");
+            }
+        }
+    }
+    keepWaiting = false;
+    while(downloaderThreads.size() > 0)
+    {
+        for(itr=downloaderThreads.begin(); itr < downloaderThreads.end(); itr++)
+        {
+            if(itr->joinable())
+            {
+                // Join thread and remove it from looping structure if it is finished.
+                itr->join();
+                downloaderThreads.erase(itr);
+                itr--;
+                printf("[+] Downloader thread joined.\n");
+            }
+        }
+    }
+
+    // Stop the timer for program execution.
+    auto overall_stop = high_resolution_clock::now();
+    
+    std::cout << duration_cast<microseconds>(overall_stop - overall_start).count() << std::endl;
+
+    return 0;
+}
+
+int authenticate(twitCurl &twitterObj)
+{
     // Get account credentials from file.
     std::ifstream credentials;
     std::string username("");
@@ -45,7 +137,6 @@ int main( int argc, char* argv[] )
     credentials.close();
 
     /* OAuth flow begins */
-    twitCurl twitterObj;
     std::string tmpStr, tmpStr2;
     // Stores the JSON data returned from an API request
     std::string replyMsg;
@@ -118,84 +209,8 @@ int main( int argc, char* argv[] )
         printf("\n[-] Account Credential Verification Unsuccessful!\n");
         printf("\n[-] twitterClient:: twitCurl::accountVerifyCredGet error:\n%s\n", replyMsg.c_str());
     }
-
-    // Get number of searcher and downloader threads from the command line.
-    // If both values aren't present, they are assumed to be 1.
-    try
-    {
-        if(argc == 3 && (std::stoi(argv[1]) > 1 && std::stoi(argv[2]) > 1))
-        {
-            numSearcherThreads = static_cast<int>(std::stoi(argv[1]));
-            numDownloaderThreads = static_cast<int>(std::stoi(argv[2]));
-            printf("[+] Arguments passed for number of threads. Using %d Searcher threads and %d Downloader threads.\n", numSearcherThreads, numDownloaderThreads);
-        }
-        else
-        {
-            throw std::invalid_argument("invalid_argument");
-        }
-    }
-    catch(std::exception e)
-    {
-        printf("[-] Incorrect arguments passed. Using 1 Searcher thread and 1 Downloader thread.\n");
-    }
-
-    // Clone the twitter object for use in the searcher and downloader threads.
-    twitCurl* clonedTwitterObj = twitterObj.clone();
-    // Prepare a stopping condition of MAX_FOLLOWERS.
-    int followerCount = 0;
-    // Flag for if downloaders can complete or need to wait for searcher to fill up data structure.
-    bool keepWaiting = true;
-    // Start the search with one user's screen-name.
-    followers.push(START_USER_ID);
-    downloadIds.push_back(START_USER_ID);
-
-    // Start the threads.
-    for(int i = 0; i < numSearcherThreads; i++)
-    {
-        searcherThreads.push_back(std::thread(&startSearcher, std::ref(*clonedTwitterObj),
-                                  std::ref(followers), std::ref(crawledIds), std::ref(downloadIds), std::ref(followerCount), std::ref(nextCursor)));
-    }
-    for(int i = 0; i < numDownloaderThreads; i++)
-    {
-        downloaderThreads.push_back(std::thread(&startDownloader, std::ref(twitterObj), std::ref(downloadIds), std::ref(keepWaiting)));
-    }
-
-    // Wait for execution to finish and join all threads back to main.
-    std::vector<std::thread>::iterator itr;
-    // Check all threads until none are remaining.
-    while(searcherThreads.size() > 0)
-    {
-        for(itr=searcherThreads.begin(); itr < searcherThreads.end(); itr++)
-        {
-            if((*itr).joinable())
-            {
-                // Join thread and remove it from looping structure if it is finished.
-                (*itr).join();
-                searcherThreads.erase(itr);
-                itr--;
-                printf("[+] Searcher thread joined.\n");
-            }
-        }
-    }
-    keepWaiting = false;
-    while(downloaderThreads.size() > 0)
-    {
-        for(itr=downloaderThreads.begin(); itr < downloaderThreads.end(); itr++)
-        {
-            if((*itr).joinable())
-            {
-                // Join thread and remove it from looping structure if it is finished.
-                (*itr).join();
-                downloaderThreads.erase(itr);
-                itr--;
-                printf("[+] Downloader thread joined.\n");
-            }
-        }
-    }
-
     return 0;
 }
-
 
 // Downloader
 // Download the profile pictures for users whose ID is in downloadIds.
@@ -204,13 +219,16 @@ void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &
     std::string userId;
     std::string replyMsg;
 
+    // Start this thread's timer.
+    auto start = high_resolution_clock::now();
+
     while(keepWaiting || !downloadIds.empty())
     {
         // Begin critical section.
         downloadMutex.lock();
         if(!downloadIds.empty())
         {
-            userId = std::to_string(*downloadIds.begin());
+            userId = std::to_string(*(downloadIds.begin()));
 
             downloadIds.erase(downloadIds.begin());
 
@@ -237,14 +255,21 @@ void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &
         if(!userId.empty())
         {
             printf("[+] Grabbing pfp...\n");
-            system(("curl " + parse_pfp_url(replyMsg) + " -s --create-dirs -o ./images/" + parseJSONScreenName(replyMsg) + ".jpg ").c_str());
+            if(system(("curl " + parse_pfp_url(replyMsg) + " -s --create-dirs -o ./images/" + parseJSONScreenName(replyMsg) + ".jpg ").c_str()))
+                printf("[-] Encountered problem downloading profile picture.\n");
         }
     }
+
+    // Stop this thread's timer.
+    auto stop = high_resolution_clock::now();
+    std::cout << "Downloader time: " << duration_cast<microseconds>(stop - start).count() << " microseconds" << std::endl;
+
     return;
 }
 
 
 // Searcher
+// Search the twitter accounts to retrieve the followers' IDs.
 void startSearcher(twitCurl &twitterObj, std::queue<long long unsigned int> &followers,
                     std::vector<long long unsigned int> &crawledIds,
                     std::vector<long long unsigned int> &downloadIds,
@@ -253,7 +278,10 @@ void startSearcher(twitCurl &twitterObj, std::queue<long long unsigned int> &fol
     std::string replyMsg;
     long long unsigned int userId;
 
-    while(!followers.empty() && followerCount < MAX_FOLLOWERS)
+    // Start this thread's timer.
+    auto start = high_resolution_clock::now();
+
+    while(/*!followers.empty() ||*/ followerCount < MAX_FOLLOWERS)
     {
         // Begin critical section.
         searchMutex.lock();
@@ -299,7 +327,8 @@ void startSearcher(twitCurl &twitterObj, std::queue<long long unsigned int> &fol
                     }
                 }
             }
-            else {
+            else
+            {
                 twitterObj.getLastCurlError(replyMsg);
                 printf( "\ntwitterClient:: twitCurl::followersIdsGet error:\n%s\n", replyMsg.c_str() );
                 break;
@@ -323,6 +352,11 @@ void startSearcher(twitCurl &twitterObj, std::queue<long long unsigned int> &fol
             std::sort(crawledIds.begin(), crawledIds.end());
         }
     }
+
+    // Stop this thread's timer.
+    auto stop = high_resolution_clock::now();
+    std::cout << "Searcher time: " << duration_cast<microseconds>(stop - start).count() << " microseconds" << std::endl;
+
     return;
 }
 
@@ -366,7 +400,7 @@ std::vector<std::string> parseJSONList(std::string xml_data)//, std::vector<std:
         while(itr != end)
         {
             std::smatch match = *itr;
-            ids.push_back(std::string(match.str()));
+            ids.push_back(match.str());
             itr++;
         }
     }
