@@ -1,10 +1,12 @@
 #include "twitterCrawler.h"
 
-void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &downloadIds, const bool &keepWaiting);
+void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &downloadIds,
+                    const bool &keepWaiting, std::vector<std::chrono::duration<int, std::micro>> &downloaderDurations);
 void startSearcher(twitCurl &twitterObj, std::queue<long long unsigned int> &followers,
                     std::vector<long long unsigned int> &crawledIds,
                     std::vector<long long unsigned int> &downloadIds,
-                    int &followerCount, std::string &nextCursor);
+                    int &followerCount, std::string &nextCursor,
+                    std::vector<std::chrono::duration<int, std::micro>> &searcherDurations);
 int authenticate(twitCurl &twitterObj);
 std::string parse_pfp_url(std::string xml_data);
 std::vector<std::string> parseJSONList(std::string xml_data);
@@ -23,6 +25,8 @@ int main( int argc, char* argv[] )
 {
     std::vector<std::thread> searcherThreads;
     std::vector<std::thread> downloaderThreads;
+    std::vector<std::chrono::duration<int, std::micro>> searcherDurations;
+    std::vector<std::chrono::duration<int, std::micro>> downloaderDurations;
     std::queue<unsigned long long> followers;       // Queue for followers that need to be crawled.
     std::vector<unsigned long long> crawledIds;     // IDs of users that have been crawled/searched?
     std::vector<unsigned long long> downloadIds;    // IDs of users whose profile pictures need to bd downloaded.
@@ -74,11 +78,14 @@ int main( int argc, char* argv[] )
     for(int i = 0; i < numSearcherThreads; i++)
     {
         searcherThreads.push_back(std::thread(&startSearcher, std::ref(*clonedTwitterObj),
-                                  std::ref(followers), std::ref(crawledIds), std::ref(downloadIds), std::ref(followerCount), std::ref(nextCursor)));
+                                  std::ref(followers), std::ref(crawledIds), std::ref(downloadIds),
+                                  std::ref(followerCount), std::ref(nextCursor), std::ref(searcherDurations)));
+
     }
     for(int i = 0; i < numDownloaderThreads; i++)
     {
-        downloaderThreads.push_back(std::thread(&startDownloader, std::ref(twitterObj), std::ref(downloadIds), std::ref(keepWaiting)));
+        downloaderThreads.push_back(std::thread(&startDownloader, std::ref(twitterObj), std::ref(downloadIds),
+            std::ref(keepWaiting), std::ref(downloaderDurations)));
     }
 
     // Wait for execution to finish and join all threads back to main.
@@ -116,8 +123,23 @@ int main( int argc, char* argv[] )
 
     // Stop the timer for program execution.
     auto overall_stop = high_resolution_clock::now();
-    
-    std::cout << duration_cast<microseconds>(overall_stop - overall_start).count() << std::endl;
+
+    std::ofstream results;
+    results.open("crawler_results.txt", std::ios::app);
+    if(results.is_open())
+    {
+        results << "Results for " << numSearcherThreads << " searchers and " << numDownloaderThreads << " downloaders:\n";
+        for(int i = 0; i < searcherDurations.size(); i++)
+        {
+            results << "searcher," << searcherDurations.at(i).count() << "\n";
+        }
+        for(int i = 0; i < downloaderDurations.size(); i++)
+        {
+            results << "downloader," << downloaderDurations.at(i).count() << "\n";
+        }
+        results << "total," << duration_cast<microseconds>(overall_stop - overall_start).count() << "\n";
+        results.close();
+    }
 
     return 0;
 }
@@ -214,7 +236,8 @@ int authenticate(twitCurl &twitterObj)
 
 // Downloader
 // Download the profile pictures for users whose ID is in downloadIds.
-void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &downloadIds, const bool &keepWaiting)
+void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &downloadIds,
+                    const bool &keepWaiting, std::vector<std::chrono::duration<int, std::micro>> &downloaderDurations)
 {
     std::string userId;
     std::string replyMsg;
@@ -262,7 +285,8 @@ void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &
 
     // Stop this thread's timer.
     auto stop = high_resolution_clock::now();
-    std::cout << "Downloader time: " << duration_cast<microseconds>(stop - start).count() << " microseconds" << std::endl;
+
+    downloaderDurations.push_back(duration_cast<microseconds>(stop - start));
 
     return;
 }
@@ -273,7 +297,8 @@ void startDownloader(twitCurl &twitterObj, std::vector<long long unsigned int> &
 void startSearcher(twitCurl &twitterObj, std::queue<long long unsigned int> &followers,
                     std::vector<long long unsigned int> &crawledIds,
                     std::vector<long long unsigned int> &downloadIds,
-                    int &followerCount, std::string &nextCursor)
+                    int &followerCount, std::string &nextCursor,
+                    std::vector<std::chrono::duration<int, std::micro>> &searcherDurations)
 {
     std::string replyMsg;
     long long unsigned int userId;
@@ -355,8 +380,9 @@ void startSearcher(twitCurl &twitterObj, std::queue<long long unsigned int> &fol
 
     // Stop this thread's timer.
     auto stop = high_resolution_clock::now();
-    std::cout << "Searcher time: " << duration_cast<microseconds>(stop - start).count() << " microseconds" << std::endl;
 
+    searcherDurations.push_back(duration_cast<microseconds>(stop - start));
+    
     return;
 }
 

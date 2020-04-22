@@ -19,3 +19,4 @@ clean :
 		rm crawler
 		rm -dr images
 		cd ./libtwitcurl && sudo make clean
+		rm crawler_output_*.txt
