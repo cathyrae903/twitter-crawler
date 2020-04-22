@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <thread>
 #include <vector>
-
 #include "include/twitcurl.h"
 
 using namespace std::chrono;
