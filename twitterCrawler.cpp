@@ -13,11 +13,14 @@ std::string parse_pfp_url(std::string xml_data);
 std::vector<std::string> parseJSONList(std::string xml_data);
 std::string parseJSONScreenName(std::string xml_data);
 
+const long long unsigned int START_USER_ID = 258604828;
+const int MAX_FOLLOWERS = 5;
+static std::string nextCursor("");
+static int numSearcherThreads = 1;
+static int numDownloaderThreads = 1;
+
 std::mutex searchMutex;
 std::mutex downloadMutex;
-
-const int MAX_FOLLOWERS = 1;
-static std::string nextCursor("");
 
 int main( int argc, char* argv[] )
 {
@@ -116,26 +119,46 @@ int main( int argc, char* argv[] )
         printf("\n[-] twitterClient:: twitCurl::accountVerifyCredGet error:\n%s\n", replyMsg.c_str());
     }
 
-    //std::string start_user = "cheetah1704";     // Username to start search at
-    //std::string url;
+    // Get number of searcher and downloader threads from the command line.
+    // If both values aren't present, they are assumed to be 1.
+    try
+    {
+        if(argc == 3 && (std::stoi(argv[1]) > 1 && std::stoi(argv[2]) > 1))
+        {
+            numSearcherThreads = static_cast<int>(std::stoi(argv[1]));
+            numDownloaderThreads = static_cast<int>(std::stoi(argv[2]));
+            printf("[+] Arguments passed for number of threads. Using %d Searcher threads and %d Downloader threads.\n", numSearcherThreads, numDownloaderThreads);
+        }
+        else
+        {
+            throw std::invalid_argument("invalid_argument");
+        }
+    }
+    catch(std::exception e)
+    {
+        printf("[-] Incorrect arguments passed. Using 1 Searcher thread and 1 Downloader thread.\n");
+    }
 
-
+    // Clone the twitter object for use in the searcher and downloader threads.
     twitCurl* clonedTwitterObj = twitterObj.clone();
     // Prepare a stopping condition of MAX_FOLLOWERS.
     int followerCount = 0;
     // Flag for if downloaders can complete or need to wait for searcher to fill up data structure.
     bool keepWaiting = true;
     // Start the search with one user's screen-name.
-    followers.push(258604828);
-    searcherThreads.push_back(std::thread(&startSearcher, std::ref(*clonedTwitterObj),
-                              std::ref(followers), std::ref(crawledIds), std::ref(downloadIds), std::ref(followerCount), std::ref(nextCursor)));
-    searcherThreads.push_back(std::thread(&startSearcher, std::ref(*clonedTwitterObj),
-                              std::ref(followers), std::ref(crawledIds), std::ref(downloadIds), std::ref(followerCount), std::ref(nextCursor)));
+    followers.push(START_USER_ID);
+    downloadIds.push_back(START_USER_ID);
 
-    downloaderThreads.push_back(std::thread(&startDownloader, std::ref(twitterObj), std::ref(downloadIds), std::ref(keepWaiting)));
-    downloaderThreads.push_back(std::thread(&startDownloader, std::ref(twitterObj), std::ref(downloadIds), std::ref(keepWaiting)));
-    downloaderThreads.push_back(std::thread(&startDownloader, std::ref(twitterObj), std::ref(downloadIds), std::ref(keepWaiting)));
-    downloaderThreads.push_back(std::thread(&startDownloader, std::ref(twitterObj), std::ref(downloadIds), std::ref(keepWaiting)));
+    // Start the threads.
+    for(int i = 0; i < numSearcherThreads; i++)
+    {
+        searcherThreads.push_back(std::thread(&startSearcher, std::ref(*clonedTwitterObj),
+                                  std::ref(followers), std::ref(crawledIds), std::ref(downloadIds), std::ref(followerCount), std::ref(nextCursor)));
+    }
+    for(int i = 0; i < numDownloaderThreads; i++)
+    {
+        downloaderThreads.push_back(std::thread(&startDownloader, std::ref(twitterObj), std::ref(downloadIds), std::ref(keepWaiting)));
+    }
 
     // Wait for execution to finish and join all threads back to main.
     std::vector<std::thread>::iterator itr;
@@ -150,6 +173,7 @@ int main( int argc, char* argv[] )
                 (*itr).join();
                 searcherThreads.erase(itr);
                 itr--;
+                printf("[+] Searcher thread joined.\n");
             }
         }
     }
@@ -164,6 +188,7 @@ int main( int argc, char* argv[] )
                 (*itr).join();
                 downloaderThreads.erase(itr);
                 itr--;
+                printf("[+] Downloader thread joined.\n");
             }
         }
     }
