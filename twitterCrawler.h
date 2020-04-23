@@ -18,6 +18,7 @@ int authenticate(twitCurl &twitterObj);
 void startDownloader(twitCurl &twitterObj,
                      std::vector<long long unsigned int> &downloadIds, 
                      const bool &keepWaiting,
+                     int &followerCount,
                      std::vector<std::chrono::duration<int, std::micro>> &downloaderDurations);
 
 void startSearcher(twitCurl &twitterObj,
@@ -32,3 +33,5 @@ std::vector<std::string> parseJSONList(std::string xml_data);
 std::string parsePFPUrl(std::string xml_data);
 
 std::string parseJSONScreenName(std::string xml_data);
+
+std::string parseNextCursor(std::string xml_data);
