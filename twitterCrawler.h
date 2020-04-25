@@ -18,6 +18,7 @@ int authenticate(twitCurl &twitterObj);
 
 void startDownloader(twitCurl &twitterObj,
                      std::vector<long long unsigned int> &downloadIds, 
+                     std::vector<long long unsigned int> &downloadedIds,
                      const bool &keepWaiting,
                      int &followerCount,
                      std::vector<std::chrono::duration<int, std::micro>> &downloaderDurations);
