@@ -351,7 +351,7 @@ void startDownloader(twitCurl &twitterObj,
 
     try 
     {
-        while(followerCount <= MAX_FOLLOWERS || !downloadIds.empty())
+        while(followerCount < MAX_FOLLOWERS || !downloadIds.empty())
         {
             // Begin critical section.
             downloadMutex.lock();
@@ -438,7 +438,7 @@ void startSearcher(twitCurl &twitterObj,
 
     try 
     {
-        while(followerCount <= MAX_FOLLOWERS)
+        while(followerCount < MAX_FOLLOWERS)
         {
             nextCursor = "-1";
 
