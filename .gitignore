@@ -1,2 +1,4 @@
 crawler
 images/
+.vscode/
+crawler_results.txt
