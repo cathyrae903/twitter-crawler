@@ -23,7 +23,7 @@ int main( int argc, char* argv[] )
     std::vector<std::chrono::duration<int, std::micro>> searcherAverageDurations;
     std::vector<std::chrono::duration<int, std::micro>> downloaderDurations;
     std::vector<std::chrono::duration<int, std::micro>> downloaderAverageDurations;
-    std::chrono::duration<long long, std::micro> totalDuration = std::chrono::microseconds::zero();
+    std::chrono::duration<unsigned long long, std::micro> totalDuration = std::chrono::microseconds::zero();
     std::queue<unsigned long long> followers;       // Queue for followers that need to be crawled.
     std::vector<unsigned long long> crawledIds;     // IDs of users that have been crawled/searched?
     std::vector<unsigned long long> downloadIds;    // IDs of users whose profile pictures need to bd downloaded.
@@ -216,6 +216,9 @@ int main( int argc, char* argv[] )
     {
         results << "Users Searched: " << crawledIds.size() << "\n";
 
+        // Remove duplicates
+        std::sort(downloadedIds.begin(), downloadedIds.end());
+        downloadedIds.erase(std::unique(downloadedIds.begin(), downloadedIds.end()), downloadedIds.end());
         results << "Images Downloaded: " << downloadedIds.size() << "\n";
 
         std::chrono::duration<int, std::micro> sum = std::chrono::microseconds::zero();
@@ -383,6 +386,7 @@ void startDownloader(twitCurl &twitterObj,
             {
                 userId = "";
             }
+
             downloadMutex.unlock();
             // End critical section.
 
@@ -441,7 +445,7 @@ void startSearcher(twitCurl &twitterObj,
             // Begin critical section.
             searchMutex.lock();
             // If there is a follower, grab em off the vector
-            if(followerCount <= MAX_FOLLOWERS && !followers.empty())
+            if(!followers.empty())
             {
                 userId = followers.front();
                 // Remove this user from the queue.
