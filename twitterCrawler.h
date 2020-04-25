@@ -1,6 +1,7 @@
 #include <bits/stdc++.h>
 #include <chrono>
 #include <cstdio>
+#include <ctime>
 #include <fstream>
 #include <iostream>
 #include <mutex>

@@ -79,7 +79,7 @@ int main( int argc, char* argv[] )
     downloadIds.push_back(START_USER_ID);
 
     
-    printf("Start while");
+    printf("Start while\n");
     while (continueSearcher || continueDownloader)
     {
         // Start the timer for program execution.
@@ -121,36 +121,36 @@ int main( int argc, char* argv[] )
         //      2) They have reached their rate limit
         std::vector<std::thread>::iterator itr;
         // Check all threads until none are remaining.
-        while(searcherThreads.size() > 0)
+        //while(searcherThreads.size() > 0)
+        //{
+        for(itr=searcherThreads.begin(); itr < searcherThreads.end(); itr++)
         {
-            for(itr=searcherThreads.begin(); itr < searcherThreads.end(); itr++)
+            if(itr->joinable())
             {
-                if(itr->joinable())
-                {
-                    // Join thread and remove it from looping structure if it is finished.
-                    itr->join();
-                    searcherThreads.erase(itr);
-                    itr--;
-                    printf("[+] Searcher thread joined.\n");
-                }
+                // Join thread and remove it from looping structure if it is finished.
+                itr->join();
+                searcherThreads.erase(itr);
+                itr--;
+                printf("[+] Searcher thread joined.\n");
             }
         }
+        //}
 
-        keepWaiting = false;
-        while(downloaderThreads.size() > 0)
+        printf("SEARCHER SIZE: %i", searcherThreads.size());
+        //while(downloaderThreads.size() > 0)
+        //{
+        for(itr=downloaderThreads.begin(); itr < downloaderThreads.end(); itr++)
         {
-            for(itr=downloaderThreads.begin(); itr < downloaderThreads.end(); itr++)
+            if(itr->joinable())
             {
-                if(itr->joinable())
-                {
-                    // Join thread and remove it from looping structure if it is finished.
-                    itr->join();
-                    downloaderThreads.erase(itr);
-                    itr--;
-                    printf("[+] Downloader thread joined.\n");
-                }
+                // Join thread and remove it from looping structure if it is finished.
+                itr->join();
+                downloaderThreads.erase(itr);
+                itr--;
+                printf("[+] Downloader thread joined.\n");
             }
         }
+        //}
          // Stop the timer for program execution.
         auto overall_stop = high_resolution_clock::now();
 
@@ -208,6 +208,8 @@ int main( int argc, char* argv[] )
         std::cout << followerCount << std::endl;
         if (continueSearcher || continueDownloader) {
             printf("More data to crunch, waiting...\n");
+            std::time_t result = std::time(nullptr);
+            std::cout << "Start time is " << std::asctime(std::localtime(&result)) << "\n";
             std::this_thread::sleep_for (std::chrono::minutes(15));
         }
     }
@@ -317,6 +319,7 @@ void startDownloader(twitCurl &twitterObj,
     std::string userId;
     std::string replyMsg;
 
+    printf("Starting downloader thread\n");
     // Start this thread's timer.
     auto start = high_resolution_clock::now();
 
@@ -346,6 +349,8 @@ void startDownloader(twitCurl &twitterObj,
                 if (replyMsg.substr(2, 6) == "errors") 
                 {
                     printf("[-] Hit the rate limit in a downloader, exiting...\n");
+                    printf(replyMsg.c_str());
+                    downloadIds.push_back(strtoull(userId.c_str(), nullptr, 10));
                     throw std::runtime_error("downloaderRateLimit");
                 }
             }
@@ -368,6 +373,7 @@ void startDownloader(twitCurl &twitterObj,
     catch (...) 
     {   
         rateLimitDownloader = std::current_exception();
+        downloadMutex.unlock();
     }
 
     // Stop this thread's timer.
@@ -390,6 +396,8 @@ void startSearcher(twitCurl &twitterObj,
     std::string replyMsg;
     long long unsigned int userId;
     std::string nextCursor = "-1";
+
+    printf("Start searcher thread\n");
 
     // Start this thread's timer.
     auto start = high_resolution_clock::now();
@@ -418,7 +426,8 @@ void startSearcher(twitCurl &twitterObj,
             // Only examine this user's followers if this user has not already been crawled.
             if(userId && !std::binary_search(crawledIds.begin(), crawledIds.end(), userId))
             {
-                printf("[+] Crawling user %i...\n", userId);
+                //printf("[+] Crawling user %i...\n", userId);
+                std::cout << "[+] Crawling user " << userId << std::endl;
                 // Increase the depth of the "searcher".
                 followerCount++;
 
@@ -436,6 +445,7 @@ void startSearcher(twitCurl &twitterObj,
                         if (replyMsg.substr(2, 6) == "errors") 
                         {
                             printf("[-] Hit the rate limit in a searcher, exiting...\n");
+                            printf(replyMsg.c_str());
                             throw std::runtime_error("searcherRateLimit");
                         }
                         //printf( "[+] twitterClient:: twitCurl::followersIdsGet for user [%u] web response:\n%s\n",
@@ -475,6 +485,7 @@ void startSearcher(twitCurl &twitterObj,
     catch (...)
     {
         rateLimitSearcher = std::current_exception();
+        searchMutex.unlock();
     }
     // Stop this thread's timer.
     auto stop = high_resolution_clock::now();
