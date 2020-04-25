@@ -23,7 +23,7 @@ int main( int argc, char* argv[] )
     std::vector<std::chrono::duration<int, std::micro>> searcherAverageDurations;
     std::vector<std::chrono::duration<int, std::micro>> downloaderDurations;
     std::vector<std::chrono::duration<int, std::micro>> downloaderAverageDurations;
-    std::chrono::duration<int, std::micro> totalDuration = std::chrono::microseconds::zero();
+    std::chrono::duration<long long, std::micro> totalDuration = std::chrono::microseconds::zero();
     std::queue<unsigned long long> followers;       // Queue for followers that need to be crawled.
     std::vector<unsigned long long> crawledIds;     // IDs of users that have been crawled/searched?
     std::vector<unsigned long long> downloadIds;    // IDs of users whose profile pictures need to bd downloaded.
@@ -375,6 +375,9 @@ void startDownloader(twitCurl &twitterObj,
                     downloadIds.push_back(strtoull(userId.c_str(), nullptr, 10));
                     throw std::runtime_error("downloaderRateLimit");
                 }
+
+                // Mark this user as having their profile image downloaded.
+                downloadedIds.push_back(strtoull(userId.c_str(), nullptr, 10));
             }
             else
             {
@@ -389,10 +392,8 @@ void startDownloader(twitCurl &twitterObj,
                 std::string screenName = parseJSONScreenName(replyMsg);
                 printf("[+] Grabbing profile picture of %s...\n", screenName.c_str());
                 if(system(("curl " + parsePFPUrl(replyMsg) + " -s --create-dirs -o ./images/" + screenName + ".jpg ").c_str()))
+                    // Note that if there is a problem, the user ID is still in downloadedIds.
                     printf("[-] Encountered problem downloading profile picture.\n");
-
-                // Mark this user as having their profile image downloaded.
-                downloadedIds.push_back(strtoull(userId.c_str(), nullptr, 10));
             }
         }
     }
@@ -440,7 +441,7 @@ void startSearcher(twitCurl &twitterObj,
             // Begin critical section.
             searchMutex.lock();
             // If there is a follower, grab em off the vector
-            if(!followers.empty())
+            if(followerCount <= MAX_FOLLOWERS && !followers.empty())
             {
                 userId = followers.front();
                 // Remove this user from the queue.
