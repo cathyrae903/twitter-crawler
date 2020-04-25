@@ -59,7 +59,6 @@ int main( int argc, char* argv[] )
         printf("[-] Incorrect arguments passed. Using 1 Searcher thread and 1 Downloader thread.\n");
     }
 
-    printf("Opening\n");
     std::ofstream results;
     results.open("crawler_results.txt", std::ios::app);
     if(results.is_open())
@@ -68,8 +67,6 @@ int main( int argc, char* argv[] )
         results.close();
     }
     
-    printf("Closing\n");
-    
     twitCurl* clonedTwitterObj = twitterObj.clone(); // Clone the twitter object for use in the searcher and downloader threads.
     int followerCount = 0; // Prepare a stopping condition of MAX_FOLLOWERS.
     bool keepWaiting = true; // Flag for if downloaders can complete or need to wait for searcher to fill up data structure.
@@ -77,9 +74,7 @@ int main( int argc, char* argv[] )
     // Start the search with one user's screen-name.
     followers.push(START_USER_ID);
     downloadIds.push_back(START_USER_ID);
-
     
-    printf("Start while\n");
     while (continueSearcher || continueDownloader)
     {
         // Start the timer for program execution.
@@ -120,9 +115,8 @@ int main( int argc, char* argv[] )
         //      1) They no longer have anything to do
         //      2) They have reached their rate limit
         std::vector<std::thread>::iterator itr;
+
         // Check all threads until none are remaining.
-        //while(searcherThreads.size() > 0)
-        //{
         for(itr=searcherThreads.begin(); itr < searcherThreads.end(); itr++)
         {
             if(itr->joinable())
@@ -134,11 +128,6 @@ int main( int argc, char* argv[] )
                 printf("[+] Searcher thread joined.\n");
             }
         }
-        //}
-
-        printf("SEARCHER SIZE: %i", searcherThreads.size());
-        //while(downloaderThreads.size() > 0)
-        //{
         for(itr=downloaderThreads.begin(); itr < downloaderThreads.end(); itr++)
         {
             if(itr->joinable())
@@ -150,14 +139,14 @@ int main( int argc, char* argv[] )
                 printf("[+] Downloader thread joined.\n");
             }
         }
-        //}
-         // Stop the timer for program execution.
+
+        // Stop the timer for program execution.
         auto overall_stop = high_resolution_clock::now();
 
         // From here on, we will check to see if there is anymore work to be done
 
         // Check for rate limit exception for Searcher
-        if (rateLimitSearcher) 
+        if(rateLimitSearcher) 
         {
             try
             {
@@ -172,7 +161,7 @@ int main( int argc, char* argv[] )
         }
 
         // Check for rate limit exception for Searcher
-        if (rateLimitDownloader) 
+        if(rateLimitDownloader) 
         {
             try
             {
@@ -202,14 +191,15 @@ int main( int argc, char* argv[] )
             results.close();
         }
 
-        std::cout << "End of stuff" << std::endl;
-        std::cout << downloadIds.size() << std::endl;
-        std::cout << followers.size() << std::endl;
-        std::cout << followerCount << std::endl;
-        if (continueSearcher || continueDownloader) {
+        std::cout << "All threads are currently joined.\n";
+        std::cout << "Downloads remaining: " << downloadIds.size() << std::endl;
+        std::cout << "Total users in queue: " << followers.size() << std::endl;
+        std::cout << "Total followers crawled: " <<followerCount << std::endl;
+        if (continueSearcher || continueDownloader)
+        {
             printf("More data to crunch, waiting...\n");
-            std::time_t result = std::time(nullptr);
-            std::cout << "Start time is " << std::asctime(std::localtime(&result)) << "\n";
+            std::time_t currTime = std::time(nullptr);
+            std::cout << "Start time is " << std::asctime(std::localtime(&currTime)) << "\n";
             std::this_thread::sleep_for (std::chrono::minutes(15));
         }
     }
@@ -297,13 +287,12 @@ int authenticate(twitCurl &twitterObj)
     if( twitterObj.accountVerifyCredGet() ) {
         twitterObj.getLastWebResponse( replyMsg );
         printf("[+] Account Credential Verification Successful.\n");
-        //printf("\ntwitterClient:: twitCurl::accountVerifyCredGet web response:\n%s\n", replyMsg.c_str());
     }
     else
     {
         twitterObj.getLastCurlError( replyMsg );
         printf("\n[-] Account Credential Verification Unsuccessful!\n");
-        printf("\n[-] twitterClient:: twitCurl::accountVerifyCredGet error:\n%s\n", replyMsg.c_str());
+        printf("\n[-] accountVerifyCredGet error:\n%s\n", replyMsg.c_str());
     }
     return 0;
 }
@@ -319,7 +308,7 @@ void startDownloader(twitCurl &twitterObj,
     std::string userId;
     std::string replyMsg;
 
-    printf("Starting downloader thread\n");
+    printf("[+] Starting downloader thread\n");
     // Start this thread's timer.
     auto start = high_resolution_clock::now();
 
@@ -327,7 +316,6 @@ void startDownloader(twitCurl &twitterObj,
     {
         while(followerCount < MAX_FOLLOWERS || !downloadIds.empty())
         {
-            //printf("In downloader: %i | %i\n", keepWaiting, !downloadIds.empty());
             // Begin critical section.
             downloadMutex.lock();
             if(!downloadIds.empty())
@@ -344,12 +332,12 @@ void startDownloader(twitCurl &twitterObj,
                 else
                 {
                     twitterObj.getLastCurlError(replyMsg);
-                    printf("\ntwitterClient:: twitCurl::userGet error:\n%s\n", replyMsg.c_str());
+                    printf("\nuserGet error:\n%s\n", replyMsg.c_str());
                 }
                 if (replyMsg.substr(2, 6) == "errors") 
                 {
                     printf("[-] Hit the rate limit in a downloader, exiting...\n");
-                    printf(replyMsg.c_str());
+                    printf("%s\n", replyMsg.c_str());
                     downloadIds.push_back(strtoull(userId.c_str(), nullptr, 10));
                     throw std::runtime_error("downloaderRateLimit");
                 }
@@ -373,13 +361,16 @@ void startDownloader(twitCurl &twitterObj,
     catch (...) 
     {   
         rateLimitDownloader = std::current_exception();
+        // If the rate limit was hit, we still need to unlock the mutex.
         downloadMutex.unlock();
     }
 
     // Stop this thread's timer.
     auto stop = high_resolution_clock::now();
     downloaderDurations.push_back(duration_cast<microseconds>(stop - start));
-    printf("[?] At the end of a downloader thread\n");
+
+    printf("[+] Ending downloader thread\n");
+
     return;
 }
 
@@ -397,16 +388,17 @@ void startSearcher(twitCurl &twitterObj,
     long long unsigned int userId;
     std::string nextCursor = "-1";
 
-    printf("Start searcher thread\n");
+    printf("[+] Start searcher thread\n");
 
     // Start this thread's timer.
     auto start = high_resolution_clock::now();
 
     try 
     {
-        while(/*!followers.empty() ||*/ followerCount < MAX_FOLLOWERS)
+        while(followerCount < MAX_FOLLOWERS)
         {
             nextCursor = "-1";
+
             // Begin critical section.
             searchMutex.lock();
             // If there is a follower, grab em off the vector
@@ -420,8 +412,6 @@ void startSearcher(twitCurl &twitterObj,
             {
                 userId = 0;
             }
-            //searchMutex.unlock();
-            // End critical section.
 
             // Only examine this user's followers if this user has not already been crawled.
             if(userId && !std::binary_search(crawledIds.begin(), crawledIds.end(), userId))
@@ -431,8 +421,6 @@ void startSearcher(twitCurl &twitterObj,
                 // Increase the depth of the "searcher".
                 followerCount++;
 
-                // Begin critical section.
-                //searchMutex.lock();
                 // Get this user's followers' IDs.
                 while (nextCursor != "0" ) 
                 {
@@ -440,58 +428,57 @@ void startSearcher(twitCurl &twitterObj,
                     if(twitterObj.followersIdsGet(nextCursor, std::to_string(userId), true))
                     {
                         // Get the response and put it in replyMsg
-                        printf("Before checkin errors\n");
                         twitterObj.getLastWebResponse(replyMsg);
                         if (replyMsg.substr(2, 6) == "errors") 
                         {
                             printf("[-] Hit the rate limit in a searcher, exiting...\n");
-                            printf(replyMsg.c_str());
+                            printf("%s\n", replyMsg.c_str());
                             throw std::runtime_error("searcherRateLimit");
                         }
-                        //printf( "[+] twitterClient:: twitCurl::followersIdsGet for user [%u] web response:\n%s\n",
-                        //        userId, replyMsg.c_str() );
-                        printf("After checking errors\n");
+
                         // Grab the next cursor if there is one
                         nextCursor = parseNextCursor(replyMsg);
-                        //nextCursor = "-1";
-                        printf("[+] Adding followers of to queue\n");
-                        // Extract follower IDs from web response.
-                        // Add extracted follower IDs to queue. Only add if not already in crawledIds? Consider efficiency between this and current method.
-                        std::vector<std::string> followersIds = parseJSONList(replyMsg);
+                        printf("[+] Adding followers to queue\n");
 
+                        // Extract follower IDs from web response.
+                        std::vector<std::string> followersIds = parseJSONList(replyMsg);
                         for(int i = 0; i < followersIds.size(); i++)
                         {
                             downloadIds.push_back(strtoull(followersIds[i].c_str(), nullptr, 10)); // base 10
                             followers.push(strtoull(followersIds[i].c_str(), nullptr, 10));
                         }
-                        printf("[+] Done adding\n");
+
                         // Mark this user as crawled.
                         crawledIds.push_back(userId);
+
                         // Sort the vector in ascending order so that search is quicker.
                         std::sort(crawledIds.begin(), crawledIds.end());
                     }
                     else 
                     {
                         twitterObj.getLastCurlError(replyMsg);
-                        printf( "\n[-] twitterClient:: twitCurl::followersIdsGet error:\n%s\n", replyMsg.c_str() );
+                        printf( "\n[-] followersIdsGet error:\n%s\n", replyMsg.c_str() );
                         break;
                     }    
                 }
             }
-        searchMutex.unlock();
-        // End critical section.
+            searchMutex.unlock();
+            // End critical section.
         }
     }
     catch (...)
     {
         rateLimitSearcher = std::current_exception();
+        // If the rate limit was hit, we still need to unlock the mutex.
         searchMutex.unlock();
     }
+
     // Stop this thread's timer.
     auto stop = high_resolution_clock::now();
-
     searcherDurations.push_back(duration_cast<microseconds>(stop - start));
-    printf("[?]Made it out of searcher while loop\n");
+
+    printf("[+] Ending searcher thread\n");
+
     return;
 }
 
