@@ -19,10 +19,10 @@ int main( int argc, char* argv[] )
     bool continueSearcher = true;
     std::vector<std::thread> searcherThreads;
     std::vector<std::thread> downloaderThreads;
-    std::vector<std::chrono::duration<int, std::micro>> searcherDurations;
-    std::vector<std::chrono::duration<int, std::micro>> searcherAverageDurations;
-    std::vector<std::chrono::duration<int, std::micro>> downloaderDurations;
-    std::vector<std::chrono::duration<int, std::micro>> downloaderAverageDurations;
+    std::vector<std::chrono::duration<unsigned long long, std::micro>> searcherDurations;
+    std::vector<std::chrono::duration<unsigned long long, std::micro>> searcherAverageDurations;
+    std::vector<std::chrono::duration<unsigned long long, std::micro>> downloaderDurations;
+    std::vector<std::chrono::duration<unsigned long long, std::micro>> downloaderAverageDurations;
     std::chrono::duration<unsigned long long, std::micro> totalDuration = std::chrono::microseconds::zero();
     std::queue<unsigned long long> followers;       // Queue for followers that need to be crawled.
     std::vector<unsigned long long> crawledIds;     // IDs of users that have been crawled/searched?
@@ -181,20 +181,20 @@ int main( int argc, char* argv[] )
         }
 
         // Calculate average duration for this rate limit window.
-        std::vector<std::chrono::duration<int, std::micro>>::iterator itrDurations;
-        std::chrono::duration<int, std::micro> sum = std::chrono::microseconds::zero();
+        std::vector<std::chrono::duration<unsigned long long, std::micro>>::iterator itrDurations;
+        std::chrono::duration<unsigned long long, std::micro> sum = std::chrono::microseconds::zero();
         for(itrDurations=searcherDurations.begin(); itrDurations < searcherDurations.end(); itrDurations++)
         {
             sum += *itrDurations;
         }
-        searcherAverageDurations.push_back(sum / static_cast<int>(numSearcherThreads));
+        searcherAverageDurations.push_back(sum / static_cast<unsigned long long>(numSearcherThreads));
         searcherDurations.clear();
         sum = std::chrono::microseconds::zero();
         for(itrDurations=downloaderDurations.begin(); itrDurations < downloaderDurations.end(); itrDurations++)
         {
             sum += *itrDurations;
         }
-        downloaderAverageDurations.push_back(sum / static_cast<int>(numDownloaderThreads));
+        downloaderAverageDurations.push_back(sum / static_cast<unsigned long long>(numDownloaderThreads));
         downloaderDurations.clear();
         totalDuration += duration_cast<microseconds>(overall_stop - overall_start);
 
@@ -341,7 +341,7 @@ void startDownloader(twitCurl &twitterObj,
                      std::vector<long long unsigned int> &downloadedIds,
                      const bool &keepWaiting, 
                      int &followerCount,
-                     std::vector<std::chrono::duration<int, std::micro>> &downloaderDurations)
+                     std::vector<std::chrono::duration<unsigned long long, std::micro>> &downloaderDurations)
 {
     std::string userId;
     std::string replyMsg;
@@ -426,13 +426,13 @@ void startSearcher(twitCurl &twitterObj,
                     std::vector<long long unsigned int> &crawledIds,
                     std::vector<long long unsigned int> &downloadIds,
                     int &followerCount,
-                    std::vector<std::chrono::duration<int, std::micro>> &searcherDurations)
+                    std::vector<std::chrono::duration<unsigned long long, std::micro>> &searcherDurations)
 {
     std::string replyMsg;
     unsigned long long userId;
     std::string nextCursor = "-1";
 
-    printf("[+] Start searcher thread\n");
+    printf("[+] Starting searcher thread\n");
 
     // Start this thread's timer.
     auto start = high_resolution_clock::now();
