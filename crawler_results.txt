@@ -1,0 +1,19 @@
+Results for 2 searchers and 2 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 2501425
+Downloader: 280052346
+Total: 282575371
+Results for 6 searchers and 6 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 3175388
+Downloader: 230624559
+Total: 234698811
+Results for 9 searchers and 9 downloaders:
+Users Searched: 15
+Images Downloaded: 1048
+Searcher: 2962160
+Downloader: 230095127
+Total: 234218370
+
