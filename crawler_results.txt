@@ -52,3 +52,27 @@ Images Downloaded: 1049
 Searcher: 16993154
 Downloader: 375955015
 Total: 392019426
+Results for 75 searchers and 75 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 19257630
+Downloader: 192232075
+Total: 215706337
+Results for 60 searchers and 60 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 18569125
+Downloader: 190427199
+Total: 212321465
+Results for 150 searchers and 150 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 21004912
+Downloader: 189420579
+Total: 218486635
+Results for 90 searchers and 90 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 19213342
+Downloader: 186795581
+Total: 210916271
