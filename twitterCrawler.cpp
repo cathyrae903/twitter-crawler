@@ -160,6 +160,7 @@ int main( int argc, char* argv[] )
             {
                 std::cout << "Searcher thread exited: " << ex.what() << std::endl;
                 continueSearcher = true;
+                continueDownloader = true;
                 rateLimitSearcher = nullptr;
             }
         }
@@ -351,11 +352,11 @@ void startDownloader(twitCurl &twitterObj,
 
     try 
     {
-        while(followerCount < MAX_FOLLOWERS || !downloadIds.empty())
+        while(!downloadIds.empty())
         {
             // Begin critical section.
             downloadMutex.lock();
-            if(!downloadIds.empty() && !std::binary_search(downloadedIds.begin(), downloadedIds.end(), *(downloadIds.begin())))
+            if(!downloadIds.empty())// && !std::binary_search(downloadedIds.begin(), downloadedIds.end(), *(downloadIds.begin())))
             {
                 userId = std::to_string(*(downloadIds.begin()));
 
@@ -428,7 +429,7 @@ void startSearcher(twitCurl &twitterObj,
                     std::vector<std::chrono::duration<int, std::micro>> &searcherDurations)
 {
     std::string replyMsg;
-    long long unsigned int userId;
+    unsigned long long userId;
     std::string nextCursor = "-1";
 
     printf("[+] Start searcher thread\n");
@@ -514,6 +515,7 @@ void startSearcher(twitCurl &twitterObj,
         rateLimitSearcher = std::current_exception();
         // If the rate limit was hit, we still need to unlock the mutex.
         searchMutex.unlock();
+        followers.push(userId);
     }
 
     // Stop this thread's timer.
