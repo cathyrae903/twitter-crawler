@@ -19,8 +19,11 @@ int main( int argc, char* argv[] )
     bool continueSearcher = true;
     std::vector<std::thread> searcherThreads;
     std::vector<std::thread> downloaderThreads;
-    std::vector<std::chrono::duration<int, std::micro>> searcherDurations;
-    std::vector<std::chrono::duration<int, std::micro>> downloaderDurations;
+    std::vector<std::chrono::duration<unsigned long long, std::micro>> searcherDurations;
+    std::vector<std::chrono::duration<unsigned long long, std::micro>> searcherAverageDurations;
+    std::vector<std::chrono::duration<unsigned long long, std::micro>> downloaderDurations;
+    std::vector<std::chrono::duration<unsigned long long, std::micro>> downloaderAverageDurations;
+    std::chrono::duration<unsigned long long, std::micro> totalDuration = std::chrono::microseconds::zero();
     std::queue<unsigned long long> followers;       // Queue for followers that need to be crawled.
     std::vector<unsigned long long> crawledIds;     // IDs of users that have been crawled/searched?
     std::vector<unsigned long long> downloadIds;    // IDs of users whose profile pictures need to bd downloaded.
@@ -100,6 +103,7 @@ int main( int argc, char* argv[] )
                 downloaderThreads.push_back(std::thread(&startDownloader, 
                                             std::ref(twitterObj), 
                                             std::ref(downloadIds),
+                                            std::ref(downloadedIds),
                                             std::ref(keepWaiting),
                                             std::ref(followerCount),
                                             std::ref(downloaderDurations)));
@@ -156,6 +160,7 @@ int main( int argc, char* argv[] )
             {
                 std::cout << "Searcher thread exited: " << ex.what() << std::endl;
                 continueSearcher = true;
+                continueDownloader = true;
                 rateLimitSearcher = nullptr;
             }
         }
@@ -175,34 +180,66 @@ int main( int argc, char* argv[] )
             }
         }
 
-        // Save the results
-        results.open("crawler_results.txt", std::ios::app);
-        if(results.is_open())
+        // Calculate average duration for this rate limit window.
+        std::vector<std::chrono::duration<unsigned long long, std::micro>>::iterator itrDurations;
+        std::chrono::duration<unsigned long long, std::micro> sum = std::chrono::microseconds::zero();
+        for(itrDurations=searcherDurations.begin(); itrDurations < searcherDurations.end(); itrDurations++)
         {
-            for(int i = 0; i < searcherDurations.size(); i++)
-            {
-                results << "Searcher: " << searcherDurations.at(i).count() << "\n";
-            }
-            for(int i = 0; i < downloaderDurations.size(); i++)
-            {
-                results << "Downloader: " << downloaderDurations.at(i).count() << "\n";
-            }
-            results << "Total: " << duration_cast<microseconds>(overall_stop - overall_start).count() << "\n";
-            results.close();
+            sum += *itrDurations;
         }
+        searcherAverageDurations.push_back(sum / static_cast<unsigned long long>(numSearcherThreads));
+        searcherDurations.clear();
+        sum = std::chrono::microseconds::zero();
+        for(itrDurations=downloaderDurations.begin(); itrDurations < downloaderDurations.end(); itrDurations++)
+        {
+            sum += *itrDurations;
+        }
+        downloaderAverageDurations.push_back(sum / static_cast<unsigned long long>(numDownloaderThreads));
+        downloaderDurations.clear();
+        totalDuration += duration_cast<microseconds>(overall_stop - overall_start);
 
         std::cout << "All threads are currently joined.\n";
         std::cout << "Downloads remaining: " << downloadIds.size() << std::endl;
         std::cout << "Total users in queue: " << followers.size() << std::endl;
-        std::cout << "Total followers crawled: " <<followerCount << std::endl;
+        std::cout << "Total followers crawled: " << followerCount << std::endl;
         if (continueSearcher || continueDownloader)
         {
             printf("More data to crunch, waiting...\n");
             std::time_t currTime = std::time(nullptr);
-            std::cout << "Start time is " << std::asctime(std::localtime(&currTime)) << "\n";
+            std::cout << "Start time is " << std::asctime(std::localtime(&currTime));
             std::this_thread::sleep_for (std::chrono::minutes(15));
         }
     }
+
+    // Save the results
+    results.open("crawler_results.txt", std::ios::app);
+    if(results.is_open())
+    {
+        results << "Users Searched: " << crawledIds.size() << "\n";
+
+        // Remove duplicates
+        std::sort(downloadedIds.begin(), downloadedIds.end());
+        downloadedIds.erase(std::unique(downloadedIds.begin(), downloadedIds.end()), downloadedIds.end());
+        results << "Images Downloaded: " << downloadedIds.size() << "\n";
+
+        std::chrono::duration<int, std::micro> sum = std::chrono::microseconds::zero();
+        for(int i = 0; i < searcherAverageDurations.size(); i++)
+        {
+            sum += searcherAverageDurations.at(i);
+        }
+        results << "Searcher: " << sum.count() << "\n";
+        sum = std::chrono::microseconds::zero();
+        for(int i = 0; i < downloaderAverageDurations.size(); i++)
+        {
+            sum += downloaderAverageDurations.at(i);
+        }
+        results << "Downloader: " << sum.count() << "\n";
+
+        results << "Total: " << totalDuration.count() << "\n";
+
+        results.close();
+    }
+
 
     delete clonedTwitterObj;
     return 0;
@@ -301,9 +338,10 @@ int authenticate(twitCurl &twitterObj)
 // Download the profile pictures for users whose ID is in downloadIds.
 void startDownloader(twitCurl &twitterObj,
                      std::vector<long long unsigned int> &downloadIds,
+                     std::vector<long long unsigned int> &downloadedIds,
                      const bool &keepWaiting, 
                      int &followerCount,
-                     std::vector<std::chrono::duration<int, std::micro>> &downloaderDurations)
+                     std::vector<std::chrono::duration<unsigned long long, std::micro>> &downloaderDurations)
 {
     std::string userId;
     std::string replyMsg;
@@ -314,11 +352,11 @@ void startDownloader(twitCurl &twitterObj,
 
     try 
     {
-        while(followerCount < MAX_FOLLOWERS || !downloadIds.empty())
+        while(!downloadIds.empty())
         {
             // Begin critical section.
             downloadMutex.lock();
-            if(!downloadIds.empty())
+            if(!downloadIds.empty())// && !std::binary_search(downloadedIds.begin(), downloadedIds.end(), *(downloadIds.begin())))
             {
                 userId = std::to_string(*(downloadIds.begin()));
 
@@ -341,19 +379,25 @@ void startDownloader(twitCurl &twitterObj,
                     downloadIds.push_back(strtoull(userId.c_str(), nullptr, 10));
                     throw std::runtime_error("downloaderRateLimit");
                 }
+
+                // Mark this user as having their profile image downloaded.
+                downloadedIds.push_back(strtoull(userId.c_str(), nullptr, 10));
             }
             else
             {
                 userId = "";
             }
+
             downloadMutex.unlock();
             // End critical section.
 
             // Extract profile_image_url_https from replyMsg and download it.
             if(!userId.empty())
             {
-                printf("[+] Grabbing pfp...\n");
-                if(system(("curl " + parsePFPUrl(replyMsg) + " -s --create-dirs -o ./images/" + parseJSONScreenName(replyMsg) + ".jpg ").c_str()))
+                std::string screenName = parseJSONScreenName(replyMsg);
+                printf("[+] Grabbing profile picture of %s...\n", screenName.c_str());
+                if(system(("curl " + parsePFPUrl(replyMsg) + " -s --create-dirs -o ./images/" + screenName + ".jpg ").c_str()))
+                    // Note that if there is a problem, the user ID is still in downloadedIds.
                     printf("[-] Encountered problem downloading profile picture.\n");
             }
         }
@@ -369,7 +413,7 @@ void startDownloader(twitCurl &twitterObj,
     auto stop = high_resolution_clock::now();
     downloaderDurations.push_back(duration_cast<microseconds>(stop - start));
 
-    printf("[+] Ending downloader thread\n");
+    std::cout << "[+] Ending downloader thread. Total thread time " << duration_cast<microseconds>(stop - start).count() << ".\n";
 
     return;
 }
@@ -382,13 +426,13 @@ void startSearcher(twitCurl &twitterObj,
                     std::vector<long long unsigned int> &crawledIds,
                     std::vector<long long unsigned int> &downloadIds,
                     int &followerCount,
-                    std::vector<std::chrono::duration<int, std::micro>> &searcherDurations)
+                    std::vector<std::chrono::duration<unsigned long long, std::micro>> &searcherDurations)
 {
     std::string replyMsg;
-    long long unsigned int userId;
+    unsigned long long userId;
     std::string nextCursor = "-1";
 
-    printf("[+] Start searcher thread\n");
+    printf("[+] Starting searcher thread\n");
 
     // Start this thread's timer.
     auto start = high_resolution_clock::now();
@@ -471,13 +515,14 @@ void startSearcher(twitCurl &twitterObj,
         rateLimitSearcher = std::current_exception();
         // If the rate limit was hit, we still need to unlock the mutex.
         searchMutex.unlock();
+        followers.push(userId);
     }
 
     // Stop this thread's timer.
     auto stop = high_resolution_clock::now();
     searcherDurations.push_back(duration_cast<microseconds>(stop - start));
 
-    printf("[+] Ending searcher thread\n");
+    std::cout << "[+] Ending searcher thread. Total thread time " << duration_cast<microseconds>(stop - start).count() << ".\n";
 
     return;
 }
@@ -547,10 +592,8 @@ std::string parseNextCursor(std::string xml_data)
 {
     std::regex reCursor("\"next_cursor_str\":\"([^\"]*)\"");
     std::smatch match;
-    printf("In parser\n");
     // Pull the information out of the xml_data
     if(std::regex_search(xml_data, match, reCursor)) {
-        printf("IN the thic\n");
         // Grab the screen name in group 1
          return match.str(1);
     }

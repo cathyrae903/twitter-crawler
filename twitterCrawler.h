@@ -18,16 +18,17 @@ int authenticate(twitCurl &twitterObj);
 
 void startDownloader(twitCurl &twitterObj,
                      std::vector<long long unsigned int> &downloadIds, 
+                     std::vector<long long unsigned int> &downloadedIds,
                      const bool &keepWaiting,
                      int &followerCount,
-                     std::vector<std::chrono::duration<int, std::micro>> &downloaderDurations);
+                     std::vector<std::chrono::duration<unsigned long long, std::micro>> &downloaderDurations);
 
 void startSearcher(twitCurl &twitterObj,
                     std::queue<long long unsigned int> &followers,
                     std::vector<long long unsigned int> &crawledIds,
                     std::vector<long long unsigned int> &downloadIds,
                     int &followerCount,
-                    std::vector<std::chrono::duration<int, std::micro>> &searcherDurations);
+                    std::vector<std::chrono::duration<unsigned long long, std::micro>> &searcherDurations);
 
 std::vector<std::string> parseJSONList(std::string xml_data);
 
