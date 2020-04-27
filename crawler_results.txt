@@ -76,3 +76,21 @@ Images Downloaded: 1049
 Searcher: 19213342
 Downloader: 186795581
 Total: 210916271
+Results for 80 searchers and 80 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 19012313
+Downloader: 187222312
+Total: 212202655
+Results for 70 searchers and 70 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 18672492
+Downloader: 185629141
+Total: 208085189
+Results for 40 searchers and 40 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 17807687
+Downloader: 185224365
+Total: 205334192
