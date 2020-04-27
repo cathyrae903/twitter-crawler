@@ -1,0 +1,108 @@
+Results for 2 searchers and 2 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 2501425
+Downloader: 280052346
+Total: 282575371
+Results for 6 searchers and 6 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 3175388
+Downloader: 230624559
+Total: 234698811
+Results for 9 searchers and 9 downloaders:
+Users Searched: 15
+Images Downloaded: 1048
+Searcher: 2962160
+Downloader: 230095127
+Total: 234218370
+Results for 18 searchers and 18 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 18215646
+Downloader: 196797647
+Total: 216029545
+Results for 12 searchers and 12 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 17229378
+Downloader: 210566342
+Total: 228497667
+Results for 50 searchers and 50 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 18231211
+Downloader: 187662202
+Total: 208749482
+Results for 25 searchers and 25 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 17526120
+Downloader: 188570692
+Total: 207418416
+Results for 200 searchers and 200 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 22534070
+Downloader: 198957551
+Total: 232725898
+Results for 1 searchers and 1 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 16993154
+Downloader: 375955015
+Total: 392019426
+Results for 75 searchers and 75 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 19257630
+Downloader: 192232075
+Total: 215706337
+Results for 60 searchers and 60 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 18569125
+Downloader: 190427199
+Total: 212321465
+Results for 150 searchers and 150 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 21004912
+Downloader: 189420579
+Total: 218486635
+Results for 90 searchers and 90 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 19213342
+Downloader: 186795581
+Total: 210916271
+Results for 80 searchers and 80 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 19012313
+Downloader: 187222312
+Total: 212202655
+Results for 70 searchers and 70 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 18672492
+Downloader: 185629141
+Total: 208085189
+Results for 40 searchers and 40 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 17807687
+Downloader: 185224365
+Total: 205334192
+Results for 170 searchers and 170 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 21141617
+Downloader: 187350105
+Total: 217601173
+Results for 140 searchers and 140 downloaders:
+Users Searched: 15
+Images Downloaded: 1049
+Searcher: 20260324
+Downloader: 198145768
+Total: 225990413
